@@ -1408,7 +1408,7 @@
   });
 
   // === INIT ===
-  var GF_V = 'v0.9.0';
+  var GF_V = 'v0.9.1';
   var prevV = localStorage.getItem('gf_version');
   if (prevV !== GF_V) {
     localStorage.setItem('gf_version', GF_V);
