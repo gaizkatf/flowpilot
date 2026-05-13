@@ -3,7 +3,7 @@
 // ===== UPDATE CHECKER CONFIG =====
 // Set this to your GitHub repo (e.g. "lordshion/flowpilot")
 // Releases must be tagged like "v0.8.9" or "0.8.9" and may attach FlowPilot.zip as asset.
-var GITHUB_REPO = 'digitalphoenixagencia-hue/flowpilot';
+var GITHUB_REPO = 'gaizkatf/flowpilot';
 var CHECK_INTERVAL_MIN = 360; // 6h
 
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
@@ -51,7 +51,12 @@ async function checkLatestRelease() {
     });
     if (!resp.ok) return;
     var data = await resp.json();
-    var latestTag = (data.tag_name || '').replace(/^v/, '');
+    // Prefer release name if it looks like semver, else fall back to tag_name
+    function parseVer(s) {
+      s = String(s || '').replace(/^v/i, '').trim();
+      return /^\d+(\.\d+){0,3}$/.test(s) ? s : null;
+    }
+    var latestTag = parseVer(data.name) || parseVer(data.tag_name);
     if (!latestTag) return;
     var manifest = chrome.runtime.getManifest();
     var current = manifest.version;
