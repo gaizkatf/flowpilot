@@ -65,29 +65,39 @@
   /* ========== UPDATE BANNER ========== */
   .update-banner {
     display: flex; align-items: center; gap: 10px;
-    padding: 8px 14px;
-    background: linear-gradient(90deg, rgba(99,102,241,0.18), rgba(16,185,129,0.10));
-    border-bottom: 1px solid rgba(99,102,241,0.25);
-    font-size: 12px; color: var(--text);
-    animation: fadeIn 0.3s ease;
+    padding: 10px 14px;
+    background: linear-gradient(90deg, #dc2626 0%, #ef4444 100%);
+    border-bottom: 1px solid #b91c1c;
+    font-size: 12px; color: #fff;
+    font-weight: 600;
+    box-shadow: 0 2px 8px rgba(220,38,38,0.4), inset 0 1px 0 rgba(255,255,255,0.15);
+    animation: bannerPulse 2.5s ease-in-out infinite, fadeIn 0.3s ease;
   }
-  .update-icon { color: var(--accent); display: flex; align-items: center; }
-  .update-text { flex: 1; min-width: 0; }
-  .update-text strong { font-weight: 700; color: var(--accent); margin: 0 2px; }
+  @keyframes bannerPulse {
+    0%, 100% { box-shadow: 0 2px 8px rgba(220,38,38,0.4), inset 0 1px 0 rgba(255,255,255,0.15); }
+    50%      { box-shadow: 0 2px 14px rgba(220,38,38,0.7), inset 0 1px 0 rgba(255,255,255,0.15); }
+  }
+  .update-icon { color: #fff; display: flex; align-items: center; }
+  .update-text { flex: 1; min-width: 0; color: #fff; }
+  .update-text strong { font-weight: 800; color: #fff; margin: 0 2px; text-shadow: 0 1px 2px rgba(0,0,0,0.2); }
   .update-cta {
-    padding: 4px 10px; border-radius: 6px;
-    background: var(--accent); color: #fff;
-    font-size: 11px; font-weight: 700; text-decoration: none;
+    padding: 5px 12px; border-radius: 6px;
+    background: #fff; color: #dc2626;
+    font-size: 11px; font-weight: 800; text-decoration: none;
+    text-transform: uppercase; letter-spacing: 0.04em;
+    transition: transform 0.15s ease, background 0.15s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  }
+  .update-cta:hover { background: #f3f4f6; transform: translateY(-1px); }
+  .update-cta:active { transform: translateY(0); }
+  .update-dismiss {
+    background: rgba(255,255,255,0.18); border: none; color: #fff;
+    font-size: 16px; line-height: 1; cursor: pointer;
+    width: 22px; height: 22px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
     transition: background 0.15s ease;
   }
-  .update-cta:hover { background: var(--accent-h); }
-  .update-dismiss {
-    background: transparent; border: none; color: var(--muted-2);
-    font-size: 18px; line-height: 1; cursor: pointer;
-    padding: 2px 6px; border-radius: 4px;
-    transition: color 0.15s ease;
-  }
-  .update-dismiss:hover { color: var(--text); }
+  .update-dismiss:hover { background: rgba(255,255,255,0.32); }
 
   /* ========== TABS ========== */
   .tabs {
