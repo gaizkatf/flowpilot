@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FlowPilot</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0c0d10;
+    --surface: #15171c;
+    --card: #1c1f26;
+    --border: #2a2d36;
+    --border-soft: rgba(255,255,255,0.05);
+    --text: #e8eaf0;
+    --muted: #6b7280;
+    --muted-2: #9ca3af;
+    --accent: #6366f1;
+    --accent-h: #4f52d4;
+    --accent-soft: rgba(99,102,241,0.12);
+    --green: #10b981;
+    --red: #ef4444;
+    --orange: #f59e0b;
+    --yellow: #fbbf24;
+  }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, 'Segoe UI', system-ui, sans-serif;
+    font-size: 13px; line-height: 1.5; overflow-x: hidden;
+  }
+  html, body { height: 100%; }
+  .app { display: flex; flex-direction: column; height: 100vh; }
+
+  /* ========== TOPBAR ========== */
+  .topbar {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    background: var(--surface);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 700; letter-spacing: -0.01em; }
+  .brand-dot {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: var(--muted); box-shadow: 0 0 0 3px rgba(107,114,128,0.15);
+    transition: all 0.3s ease;
+  }
+  .brand-dot.on {
+    background: var(--green); box-shadow: 0 0 0 3px rgba(16,185,129,0.18);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 3px rgba(16,185,129,0.18); }
+    50% { box-shadow: 0 0 0 6px rgba(16,185,129,0.05); }
+  }
+  .topbar-actions { display: flex; gap: 4px; }
+  .icon-btn {
+    width: 30px; height: 30px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--card); color: var(--muted-2);
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s ease; font: 600 11px system-ui;
+  }
+  .icon-btn:hover { color: var(--text); border-color: var(--accent); background: var(--accent-soft); }
+  .icon-btn.active { color: var(--text); border-color: var(--accent); background: var(--accent-soft); }
+
+  /* ========== UPDATE BANNER ========== */
+  .update-banner {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 14px;
+    background: linear-gradient(90deg, rgba(99,102,241,0.18), rgba(16,185,129,0.10));
+    border-bottom: 1px solid rgba(99,102,241,0.25);
+    font-size: 12px; color: var(--text);
+    animation: fadeIn 0.3s ease;
+  }
+  .update-icon { color: var(--accent); display: flex; align-items: center; }
+  .update-text { flex: 1; min-width: 0; }
+  .update-text strong { font-weight: 700; color: var(--accent); margin: 0 2px; }
+  .update-cta {
+    padding: 4px 10px; border-radius: 6px;
+    background: var(--accent); color: #fff;
+    font-size: 11px; font-weight: 700; text-decoration: none;
+    transition: background 0.15s ease;
+  }
+  .update-cta:hover { background: var(--accent-h); }
+  .update-dismiss {
+    background: transparent; border: none; color: var(--muted-2);
+    font-size: 18px; line-height: 1; cursor: pointer;
+    padding: 2px 6px; border-radius: 4px;
+    transition: color 0.15s ease;
+  }
+  .update-dismiss:hover { color: var(--text); }
+
+  /* ========== TABS ========== */
+  .tabs {
+    display: flex; background: var(--surface);
+    border-bottom: 1px solid var(--border); padding: 0 8px;
+  }
+  .tab {
+    flex: 1; padding: 12px 8px; background: transparent; border: none;
+    color: var(--muted); font: 600 12px -apple-system, sans-serif;
+    cursor: pointer; position: relative; transition: color 0.15s ease;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--text); }
+  .tab.active::after {
+    content: ''; position: absolute; left: 12px; right: 12px; bottom: 0;
+    height: 2px; background: var(--accent); border-radius: 2px 2px 0 0;
+  }
+  .tab-badge {
+    display: inline-block; padding: 1px 7px; background: var(--card);
+    color: var(--muted-2); font-size: 10px; border-radius: 10px;
+    min-width: 18px; font-feature-settings: 'tnum';
+  }
+  .tab.active .tab-badge { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+
+  /* ========== TAB CONTENT ========== */
+  .tab-content {
+    flex: 1; overflow-y: auto; display: none;
+  }
+  .tab-content.active {
+    display: block;
+    animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ========== SECTIONS ========== */
+  .section { padding: 14px 16px; border-bottom: 1px solid var(--border-soft); }
+  .section:last-child { border-bottom: none; }
+  .section-label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--muted); margin-bottom: 12px; font-weight: 700;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .row { margin-bottom: 12px; }
+  .row:last-child { margin-bottom: 0; }
+  .row-label { font-size: 11px; color: var(--muted-2); margin-bottom: 6px; font-weight: 500; }
+
+  /* ========== SEGMENT CONTROL ========== */
+  .seg {
+    display: flex; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 8px;
+    overflow: hidden;
+  }
+  .seg button {
+    flex: 1; padding: 8px 4px; background: transparent; border: none;
+    color: var(--muted); font: 600 12px -apple-system, sans-serif; cursor: pointer;
+    transition: all 0.15s ease; text-align: center;
+    border-right: 1px solid var(--border);
+  }
+  .seg button:last-child { border-right: none; }
+  .seg button:hover { color: var(--text); background: rgba(255,255,255,0.03); }
+  .seg button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  /* ========== SELECT ========== */
+  .sel-wrap { position: relative; }
+  .sel {
+    width: 100%; padding: 9px 32px 9px 12px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text); font: 13px -apple-system, sans-serif;
+    cursor: pointer; appearance: none; -webkit-appearance: none; outline: none;
+    transition: border-color 0.15s ease;
+  }
+  .sel:hover, .sel:focus { border-color: var(--accent); }
+  .sel-arrow {
+    position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+    color: var(--muted); pointer-events: none; font-size: 10px;
+  }
+
+  /* ========== SLIDER ========== */
+  .slider-row { display: flex; align-items: center; gap: 12px; }
+  .slider {
+    flex: 1; -webkit-appearance: none; height: 4px; border-radius: 2px;
+    background: var(--border); outline: none;
+  }
+  .slider::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 16px; height: 16px;
+    border-radius: 50%; background: var(--accent); cursor: pointer;
+    border: 2px solid var(--bg);
+  }
+  .slider-val {
+    min-width: 40px; text-align: right; font-weight: 700;
+    color: var(--text); font-size: 13px; font-feature-settings: 'tnum';
+  }
+
+  /* ========== TOGGLE ========== */
+  .toggle-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 0;
+  }
+  .toggle-label { font-size: 13px; color: var(--text); }
+  .switch { position: relative; width: 36px; height: 20px; cursor: pointer; flex-shrink: 0; }
+  .switch input { display: none; }
+  .switch-track {
+    position: absolute; inset: 0; background: var(--border);
+    border-radius: 11px; transition: background 0.2s ease;
+  }
+  .switch input:checked + .switch-track { background: var(--accent); }
+  .switch-knob {
+    position: absolute; top: 2px; left: 2px; width: 16px; height: 16px;
+    background: #fff; border-radius: 50%;
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .switch input:checked ~ .switch-knob { transform: translateX(16px); }
+
+  /* ========== LIVE PREVIEW ========== */
+  .preview {
+    background: linear-gradient(135deg, var(--accent-soft), transparent 80%);
+    border: 1px solid rgba(99,102,241,0.18);
+    border-radius: 12px; padding: 14px 16px;
+    display: flex; flex-direction: column; gap: 5px;
+    position: relative; overflow: hidden;
+  }
+  .preview-head {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--accent); font-weight: 700;
+  }
+  .preview-body {
+    font-size: 15px; font-weight: 700; color: var(--text);
+    letter-spacing: -0.015em; line-height: 1.3;
+  }
+  .preview-meta { font-size: 11px; color: var(--muted-2); }
+
+  /* ========== TEXTAREA ========== */
+  .ta {
+    width: 100%; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 10px;
+    color: var(--text); font: 12px 'SF Mono', Consolas, monospace;
+    padding: 12px 14px; resize: vertical; outline: none;
+    transition: border-color 0.15s ease; min-height: 130px;
+  }
+  .ta:focus { border-color: var(--accent); }
+  .ta-meta {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-top: 8px;
+  }
+  .ta-counter {
+    font-size: 11px; color: var(--muted-2); font-feature-settings: 'tnum';
+    transition: color 0.15s ease;
+  }
+  .ta-counter.has { color: var(--accent); font-weight: 700; }
+
+  /* ========== BUTTONS ========== */
+  .btn {
+    padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--surface); color: var(--text);
+    font: 600 12px -apple-system, sans-serif; cursor: pointer;
+    transition: all 0.15s ease; text-align: center;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .btn:hover { border-color: var(--accent); background: var(--accent-soft); }
+  .btn:active { transform: translateY(1px); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { background: var(--accent-h); border-color: var(--accent-h); }
+  .btn.danger { border-color: rgba(239,68,68,0.25); color: var(--text); }
+  .btn.danger:hover { border-color: var(--red); color: var(--red); background: rgba(239,68,68,0.06); }
+  .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .btn-grid .btn-full { grid-column: 1 / -1; }
+  .btn.cta {
+    width: 100%; padding: 14px; font-size: 13px;
+    font-weight: 700; letter-spacing: 0.005em;
+  }
+  .btn.cta:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-mini {
+    padding: 4px 10px; font-size: 10px; height: 24px;
+    border: 1px solid var(--border); border-radius: 6px;
+    background: var(--surface); color: var(--muted-2);
+    cursor: pointer; transition: all 0.15s ease;
+  }
+  .btn-mini:hover { color: var(--text); border-color: var(--accent); }
+
+  /* ========== PROGRESS CARD ========== */
+  .progress-card {
+    margin: 0 16px 14px; padding: 14px;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; display: none;
+  }
+  .progress-card.active { display: block; animation: fadeIn 0.3s ease; }
+  .progress-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .progress-title { font-size: 12px; font-weight: 700; color: var(--text); }
+  .progress-meta { font-size: 11px; color: var(--muted-2); font-feature-settings: 'tnum'; }
+  .progress-bar {
+    height: 6px; background: var(--border); border-radius: 3px;
+    overflow: hidden; position: relative;
+  }
+  .progress-fill {
+    height: 100%; background: linear-gradient(90deg, var(--accent), var(--green));
+    border-radius: 3px; width: 0%;
+    transition: width 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+    position: relative; overflow: hidden;
+  }
+  .progress-fill::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent);
+    animation: shimmer 1.8s linear infinite;
+  }
+  @keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+  .progress-stats {
+    display: flex; gap: 14px; margin-top: 10px; font-size: 11px; color: var(--muted-2);
+  }
+  .progress-stat strong {
+    color: var(--text); font-feature-settings: 'tnum';
+    margin-left: 4px;
+  }
+
+  /* ========== GALLERY ========== */
+  .gallery-head {
+    padding: 14px 16px 10px;
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; background: var(--bg); z-index: 1;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .gallery-title {
+    font-size: 13px; font-weight: 700;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .gallery-meta { font-size: 11px; color: var(--muted-2); font-weight: 400; font-feature-settings: 'tnum'; }
+  .gallery-grid {
+    padding: 12px 16px 24px;
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;
+  }
+  .thumb {
+    position: relative;
+    aspect-ratio: var(--thumb-aspect, 1);
+    border-radius: 8px; overflow: hidden;
+    background: var(--surface); border: 1px solid var(--border);
+    cursor: pointer; transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .thumb:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .thumb img {
+    width: 100%; height: 100%; object-fit: cover; display: block;
+    opacity: 0; transition: opacity 0.4s ease;
+  }
+  .thumb img.loaded { opacity: 1; }
+  .thumb.skeleton {
+    cursor: default;
+  }
+  .thumb.skeleton::before {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(110deg, var(--card) 30%, rgba(255,255,255,0.04) 50%, var(--card) 70%);
+    background-size: 200% 100%;
+    animation: skeleton 1.4s linear infinite;
+  }
+  .thumb.skeleton::after {
+    content: ''; position: absolute; top: 50%; left: 50%;
+    width: 24px; height: 24px; margin: -12px 0 0 -12px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    opacity: 0.6;
+  }
+  /* Cancelled state: stop animations, greyed out + badge */
+  .thumb.cancelled {
+    cursor: default; opacity: 0.5;
+    background: var(--surface);
+  }
+  .thumb.cancelled::before {
+    content: ''; position: absolute; inset: 0;
+    background: repeating-linear-gradient(
+      45deg,
+      transparent 0 6px,
+      rgba(239,68,68,0.04) 6px 12px
+    );
+    animation: none;
+  }
+  .thumb.cancelled::after {
+    content: 'Cancelado'; position: absolute;
+    top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: auto; height: auto; margin: 0;
+    border: none; border-radius: 4px;
+    background: rgba(239,68,68,0.15);
+    color: var(--red); font-size: 9px; font-weight: 700;
+    padding: 3px 8px; letter-spacing: 0.04em;
+    text-transform: uppercase;
+    animation: none; opacity: 1;
+  }
+  @keyframes skeleton {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+  .thumb-idx {
+    position: absolute; top: 4px; left: 4px;
+    background: rgba(0,0,0,0.75); color: #fff;
+    font-size: 9px; font-weight: 700; padding: 2px 6px;
+    border-radius: 4px; font-feature-settings: 'tnum';
+    z-index: 1;
+  }
+  .thumb-ratio {
+    position: absolute; bottom: 4px; right: 4px;
+    background: rgba(0,0,0,0.75); color: var(--yellow);
+    font-size: 9px; font-weight: 700; padding: 2px 6px;
+    border-radius: 4px; font-feature-settings: 'tnum';
+    z-index: 1; opacity: 0; transition: opacity 0.3s ease;
+  }
+  .thumb-ratio.shown { opacity: 1; }
+
+  /* ========== EMPTY STATE ========== */
+  .empty {
+    padding: 60px 24px; text-align: center; color: var(--muted-2);
+  }
+  .empty-icon {
+    width: 44px; height: 44px; margin: 0 auto 14px;
+    color: var(--muted); opacity: 0.5;
+  }
+  .empty-title {
+    font-size: 14px; color: var(--text); margin-bottom: 6px; font-weight: 600;
+  }
+  .empty-text { font-size: 12px; color: var(--muted-2); line-height: 1.5; }
+
+  /* ========== CONNECTION CARD ========== */
+  .conn-card {
+    margin: 14px 16px; padding: 16px;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px;
+    display: flex; align-items: center; gap: 14px;
+  }
+  .conn-indicator {
+    width: 36px; height: 36px; border-radius: 50%;
+    flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+    background: var(--muted); box-shadow: 0 0 0 4px rgba(107,114,128,0.12);
+    transition: all 0.3s ease;
+  }
+  .conn-indicator svg { color: #fff; }
+  .conn-indicator.on {
+    background: var(--green); box-shadow: 0 0 0 4px rgba(16,185,129,0.18);
+  }
+  .conn-info { flex: 1; min-width: 0; }
+  .conn-text { font-size: 13px; font-weight: 600; }
+  .conn-meta { font-size: 11px; color: var(--muted-2); margin-top: 2px; }
+
+  /* ========== LOG ========== */
+  #log {
+    padding: 6px 16px 16px;
+    font-family: 'SF Mono', 'Cascadia Code', Consolas, monospace;
+    font-size: 11px; line-height: 1.7;
+    max-height: 380px; overflow-y: auto;
+  }
+  .log-line { padding: 1px 0; }
+  .log-time { color: var(--muted); margin-right: 8px; font-size: 10px; }
+
+  /* ========== MODAL ========== */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.7); z-index: 100;
+    display: none; align-items: center; justify-content: center;
+    backdrop-filter: blur(6px);
+  }
+  .modal-overlay.show { display: flex; }
+  .modal {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; width: 90%; max-width: 380px;
+    max-height: 85vh; overflow-y: auto; padding: 22px;
+  }
+  .modal h2 {
+    font-size: 16px; font-weight: 700; color: #fff;
+    margin-bottom: 16px; letter-spacing: -0.01em;
+  }
+  .modal h3 {
+    font-size: 11px; font-weight: 700; color: var(--accent);
+    margin: 16px 0 8px; text-transform: uppercase; letter-spacing: 0.1em;
+  }
+  .modal p { font-size: 12px; color: var(--muted-2); margin-bottom: 8px; line-height: 1.6; }
+  .modal .item { padding: 8px 0; border-bottom: 1px solid var(--border-soft); }
+  .modal .item:last-child { border-bottom: none; }
+  .modal .item b { color: var(--text); }
+
+  /* ========== SCROLLBAR ========== */
+  *::-webkit-scrollbar { width: 6px; }
+  *::-webkit-scrollbar-track { background: transparent; }
+  *::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  *::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ================== TOPBAR ================== -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-dot" id="statusDot"></span>
+      <span>FlowPilot</span>
+    </div>
+    <div class="topbar-actions">
+      <button class="icon-btn lang-btn" id="btnLangEs" title="Español">ES</button>
+      <button class="icon-btn lang-btn" id="btnLangEn" title="English">EN</button>
+      <button class="icon-btn" id="btnTutorial" title="Ayuda">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- ================== UPDATE BANNER ================== -->
+  <div class="update-banner" id="updateBanner" style="display:none">
+    <div class="update-icon">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+    </div>
+    <div class="update-text">
+      Nueva versión <strong id="updateVersion">—</strong> disponible
+    </div>
+    <a class="update-cta" id="updateLink" href="#" target="_blank" rel="noopener">Descargar</a>
+    <button class="update-dismiss" id="updateDismiss" title="Ocultar">×</button>
+  </div>
+
+  <!-- ================== TABS ================== -->
+  <nav class="tabs">
+    <button class="tab active" data-tab="crear">Crear</button>
+    <button class="tab" data-tab="resultados">Resultados <span class="tab-badge" id="tabResultsBadge">0</span></button>
+    <button class="tab" data-tab="estado">Estado</button>
+  </nav>
+
+  <!-- ================== CREAR TAB ================== -->
+  <section class="tab-content active" id="tab-crear">
+
+    <!-- Live preview -->
+    <div class="section">
+      <div class="preview">
+        <div class="preview-head">Vas a crear con</div>
+        <div class="preview-body" id="lpBody">Nano Banana Pro · 16:9 · ×1</div>
+        <div class="preview-meta" id="lpMeta">Auto-descarga activa · pausa 20s entre prompts</div>
+      </div>
+    </div>
+
+    <!-- Settings -->
+    <div class="section">
+      <div class="section-label">Configuración</div>
+
+      <div class="row">
+        <div class="row-label">Tipo</div>
+        <div class="seg" id="modeSeg">
+          <button class="on" data-val="image" data-i18n="mode_image">Imagen</button>
+          <button data-val="video" data-i18n="mode_video">Vídeo</button>
+        </div>
+      </div>
+
+      <div class="row" id="videoSubRow" style="display:none">
+        <div class="row-label" data-i18n="lbl_video_type">Tipo de vídeo</div>
+        <div class="seg" id="videoSubSeg">
+          <button class="on" data-val="frames" data-i18n="sub_frames">Fotogramas</button>
+          <button data-val="ingredients" data-i18n="sub_ingredients">Ingredientes</button>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="row-label">Modelo</div>
+        <div class="sel-wrap">
+          <select class="sel" id="modelSel"></select>
+          <span class="sel-arrow">▾</span>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="row-label">Formato</div>
+        <div class="seg" id="ratioSeg"></div>
+      </div>
+
+      <div class="row">
+        <div class="row-label">Imágenes por prompt</div>
+        <div class="seg" id="genSeg">
+          <button class="on" data-val="1">×1</button>
+          <button data-val="2">×2</button>
+          <button data-val="3">×3</button>
+          <button data-val="4">×4</button>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="row-label">Pausa entre prompts</div>
+        <div class="slider-row">
+          <input type="range" class="slider" id="delaySl" min="5" max="120" value="20">
+          <span class="slider-val" id="delayVal">20s</span>
+        </div>
+      </div>
+
+      <div class="toggle-row">
+        <span class="toggle-label">Extensión activa</span>
+        <label class="switch">
+          <input type="checkbox" id="enabledTgl" checked>
+          <div class="switch-track"></div>
+          <div class="switch-knob"></div>
+        </label>
+      </div>
+    </div>
+
+    <!-- Paste prompts -->
+    <div class="section">
+      <div class="section-label">Tus prompts</div>
+      <textarea class="ta" id="pasteArea" placeholder="Pega aquí tus prompts, uno por línea..."></textarea>
+      <div class="ta-meta">
+        <span class="ta-counter" id="pasteCount">0 prompts</span>
+        <button class="btn-mini" id="btnNuevo">o cargar archivo .txt</button>
+      </div>
+    </div>
+
+    <!-- CTA -->
+    <div class="section">
+      <button class="btn primary cta" id="btnLoadPasted">Crear imágenes</button>
+    </div>
+
+    <!-- Progress card (visible while running) -->
+    <div class="progress-card" id="progressCard">
+      <div class="progress-head">
+        <span class="progress-title" id="progressTitle">Generando…</span>
+        <span class="progress-meta" id="progressMeta">0 / 0</span>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="progress-stats">
+        <span>Hechas <strong id="progressGen">0</strong></span>
+        <span>Descargadas <strong id="progressDl">0</strong></span>
+        <span>Fallidas <strong id="progressFail">0</strong></span>
+      </div>
+      <div style="margin-top:10px;font-size:11px;color:var(--muted-2);font-feature-settings:'tnum'" id="progressEta">ETA calculando…</div>
+    </div>
+
+    <input type="file" id="fileInput" accept=".txt" style="display:none">
+  </section>
+
+  <!-- ================== RESULTADOS TAB ================== -->
+  <section class="tab-content" id="tab-resultados">
+    <div class="gallery-head">
+      <div class="gallery-title">
+        Galería
+        <span class="gallery-meta" id="galleryMeta">0 imágenes</span>
+      </div>
+      <button class="btn-mini" id="btnGalleryClear">Vaciar</button>
+    </div>
+
+    <div class="gallery-grid" id="liveGallery"></div>
+
+    <div class="empty" id="galleryEmpty">
+      <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+      <div class="empty-title">Aún no hay imágenes</div>
+      <div class="empty-text">Aparecerán aquí mientras se generan</div>
+    </div>
+  </section>
+
+  <!-- ================== ESTADO TAB ================== -->
+  <section class="tab-content" id="tab-estado">
+
+    <div class="conn-card">
+      <div class="conn-indicator" id="connDot">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+      <div class="conn-info">
+        <div class="conn-text" id="connText">Abre Flow para empezar</div>
+        <div class="conn-meta" id="connMeta">Necesitas un proyecto activo</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">Acciones</div>
+      <div class="btn-grid">
+        <button class="btn" id="btnContinuar">Continuar</button>
+        <button class="btn" id="btnReintentar">Reintentar fallidos</button>
+        <button class="btn" id="btnDescargar">Descargar todo</button>
+        <button class="btn" id="btnEstado">Ver estado</button>
+        <button class="btn danger" id="btnDetener">Detener</button>
+        <button class="btn" id="btnLimpiar">Limpiar todo</button>
+        <button class="btn btn-full" id="btnPolitica">Exportar bloqueados por política</button>
+        <button class="btn btn-full" id="btnExportar">Exportar prompts fallidos</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">
+        <span>Registro</span>
+        <button class="btn-mini" id="btnLogClear">Limpiar registro</button>
+      </div>
+      <div id="log"></div>
+    </div>
+  </section>
+
+</div>
+
+<!-- ================== TUTORIAL MODAL ================== -->
+<div class="modal-overlay" id="tutorialModal">
+  <div class="modal">
+    <h2>Cómo usar FlowPilot</h2>
+    <div id="tutorialContent"></div>
+    <button class="btn primary" id="btnCloseTutorial" style="width:100%;margin-top:16px">Entendido</button>
+  </div>
+</div>
+
+<script src="sidepanel.js"></script>
+</body>
+</html>
