@@ -511,7 +511,45 @@ function createSkeletons(promptsCount, imagesPerPrompt) {
   ensureGalleryEmpty();
 }
 
-function fillThumbWithImage(idx, suffix, url, prompt) {
+function attachLoadHandlers(entry, url, isVideo) {
+  if (isVideo) {
+    entry.img.style.display = 'none';
+    // Replace img with video element
+    var vid = document.createElement('video');
+    vid.muted = true;
+    vid.playsInline = true;
+    vid.preload = 'metadata';
+    vid.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;opacity:0;transition:opacity 0.4s ease';
+    vid.addEventListener('loadedmetadata', function() {
+      var detected = detectAspectRatio(this.videoWidth, this.videoHeight);
+      entry.ratioEl.textContent = detected;
+      entry.ratioEl.classList.add('shown');
+      entry.ratioEl.title = this.videoWidth + 'x' + this.videoHeight;
+      this.style.opacity = '1';
+      entry.wrap.classList.remove('skeleton', 'video-pending');
+    });
+    vid.addEventListener('error', function() { this.style.opacity = '0.3'; });
+    vid.src = url;
+    entry.wrap.appendChild(vid);
+    entry.videoEl = vid;
+    // Play on hover
+    entry.wrap.addEventListener('mouseenter', function() { try { vid.play(); } catch(e) {} });
+    entry.wrap.addEventListener('mouseleave', function() { try { vid.pause(); vid.currentTime = 0; } catch(e) {} });
+  } else {
+    entry.img.onload = function() {
+      var detected = detectAspectRatio(this.naturalWidth, this.naturalHeight);
+      entry.ratioEl.textContent = detected;
+      entry.ratioEl.classList.add('shown');
+      entry.ratioEl.title = this.naturalWidth + 'x' + this.naturalHeight;
+      this.classList.add('loaded');
+      entry.wrap.classList.remove('skeleton');
+    };
+    entry.img.onerror = function() { this.style.opacity = '0.3'; };
+    entry.img.src = url;
+  }
+}
+
+function fillThumbWithImage(idx, suffix, url, prompt, isVideo) {
   // Dedupe: skip if URL already shown (prevents duplicates after restoreGallery / reload)
   for (var d = 0; d < galleryThumbs.length; d++) {
     if (galleryThumbs[d].hasImage && galleryThumbs[d].url === url) return false;
@@ -522,19 +560,16 @@ function fillThumbWithImage(idx, suffix, url, prompt) {
     if (entry.idx === idx && entry.suffix === (suffix || '') && !entry.hasImage) {
       entry.url = url;
       entry.prompt = prompt;
+      entry.isVideo = !!isVideo;
       entry.wrap.title = '#' + idx + (prompt ? ' — ' + prompt.substring(0, 80) : '');
-      entry.img.onload = (function(e) {
-        return function() {
-          var detected = detectAspectRatio(this.naturalWidth, this.naturalHeight);
-          e.ratioEl.textContent = detected;
-          e.ratioEl.classList.add('shown');
-          e.ratioEl.title = this.naturalWidth + 'x' + this.naturalHeight;
-          this.classList.add('loaded');
-          e.wrap.classList.remove('skeleton');
-        };
-      })(entry);
-      entry.img.onerror = function() { this.style.opacity = '0.3'; };
-      entry.img.src = url;
+      if (isVideo) {
+        // Mark as "rendering" until poll completes; keep skeleton style but with badge
+        entry.wrap.classList.add('video-pending');
+        addVideoBadge(entry.wrap);
+        // Wait for media_ready event to attach <video>
+      } else {
+        attachLoadHandlers(entry, url, false);
+      }
       entry.hasImage = true;
       ensureGalleryEmpty();
       return true;
@@ -542,30 +577,59 @@ function fillThumbWithImage(idx, suffix, url, prompt) {
   }
   // No matching skeleton found — append new thumb
   var t = makeThumb(idx, suffix);
-  var entry2 = { idx: idx, suffix: suffix || '', wrap: t.wrap, img: t.img, ratioEl: t.ratioEl, hasImage: true, url: url, prompt: prompt };
+  var entry2 = { idx: idx, suffix: suffix || '', wrap: t.wrap, img: t.img, ratioEl: t.ratioEl, hasImage: true, url: url, prompt: prompt, isVideo: !!isVideo };
   t.wrap.title = '#' + idx + (prompt ? ' — ' + prompt.substring(0, 80) : '');
   t.wrap.addEventListener('click', function() { window.open(url, '_blank'); });
-  t.img.onload = function() {
-    var detected = detectAspectRatio(this.naturalWidth, this.naturalHeight);
-    entry2.ratioEl.textContent = detected;
-    entry2.ratioEl.classList.add('shown');
-    entry2.ratioEl.title = this.naturalWidth + 'x' + this.naturalHeight;
-    this.classList.add('loaded');
-    entry2.wrap.classList.remove('skeleton');
-  };
-  t.img.onerror = function() { this.style.opacity = '0.3'; };
-  t.img.src = url;
+  if (isVideo) {
+    t.wrap.classList.add('video-pending');
+    addVideoBadge(t.wrap);
+  } else {
+    attachLoadHandlers(entry2, url, false);
+  }
   galleryThumbs.push(entry2);
   galleryEl.appendChild(t.wrap);
   ensureGalleryEmpty();
   return true;
 }
 
-function addGalleryThumbs(idx, prompt, urls) {
+function addVideoBadge(wrap) {
+  if (wrap.querySelector('.thumb-video-badge')) return;
+  var b = document.createElement('span');
+  b.className = 'thumb-video-badge';
+  b.textContent = 'VIDEO';
+  b.style.cssText = 'position:absolute;top:4px;right:4px;background:rgba(99,102,241,0.85);color:#fff;font-size:8px;font-weight:800;padding:2px 5px;border-radius:3px;letter-spacing:0.05em;z-index:2';
+  wrap.appendChild(b);
+}
+
+function markVideoReady(mediaId, url) {
+  for (var i = 0; i < galleryThumbs.length; i++) {
+    var e = galleryThumbs[i];
+    if (e.isVideo && (e.url || '').indexOf(encodeURIComponent(mediaId)) > -1) {
+      // attach video element now that backend has rendered it
+      attachLoadHandlers(e, url || e.url, true);
+      // Remove existing static badge (replaced by inline detected ratio + video tag)
+      var staticBadge = e.wrap.querySelector('.thumb-video-badge');
+      if (staticBadge) staticBadge.remove();
+      return;
+    }
+  }
+}
+function markVideoFailed(mediaId) {
+  for (var i = 0; i < galleryThumbs.length; i++) {
+    var e = galleryThumbs[i];
+    if (e.isVideo && (e.url || '').indexOf(encodeURIComponent(mediaId)) > -1) {
+      e.wrap.classList.remove('skeleton', 'video-pending');
+      e.wrap.classList.add('cancelled'); // re-use cancelled style
+      return;
+    }
+  }
+}
+
+function addGalleryThumbs(idx, prompt, urls, isVideo) {
   if (!urls || !urls.length) return;
   for (var i = 0; i < urls.length; i++) {
     var suffix = urls.length > 1 ? String.fromCharCode(97 + i) : '';
-    fillThumbWithImage(idx, suffix, urls[i], prompt);
+    fillThumbWithImage(idx, suffix, urls[i], prompt, isVideo);
   }
   galleryEl.scrollTop = galleryEl.scrollHeight;
 }
@@ -581,7 +645,11 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
     addLog(t('log_complete'), '#10b981');
     hideProgress();
   } else if (msg.type === 'images_ready') {
-    addGalleryThumbs(msg.promptIndex, msg.prompt, msg.urls || []);
+    addGalleryThumbs(msg.promptIndex, msg.prompt, msg.urls || [], !!msg.isVideo);
+  } else if (msg.type === 'media_ready') {
+    markVideoReady(msg.mediaId, msg.url);
+  } else if (msg.type === 'media_failed') {
+    markVideoFailed(msg.mediaId);
   } else if (msg.type === 'batch_start') {
     showProgress(msg.total);
     createSkeletons(msg.prompts, msg.imagesPerPrompt);

@@ -365,6 +365,22 @@
     animation: spin 0.8s linear infinite;
     opacity: 0.6;
   }
+  /* Video pending: same skeleton + spinner, but shows "VIDEO" badge */
+  .thumb.video-pending::before {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(110deg, var(--card) 30%, rgba(99,102,241,0.08) 50%, var(--card) 70%);
+    background-size: 200% 100%;
+    animation: skeleton 2s linear infinite;
+  }
+  .thumb.video-pending::after {
+    content: ''; position: absolute; top: 50%; left: 50%;
+    width: 28px; height: 28px; margin: -14px 0 0 -14px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    opacity: 0.7;
+  }
   /* Cancelled state: stop animations, greyed out + badge */
   .thumb.cancelled {
     cursor: default; opacity: 0.5;

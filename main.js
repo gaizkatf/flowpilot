@@ -751,9 +751,11 @@
   // Download single image (used by auto-download per generation)
   // Filename = prompt text only (user already numbers prompts, do not re-prefix)
   async function descargarUnaImagen(item) {
-    var safe = (item.prompt || ('image_' + item.idx)).replace(/[<>:"/\\|?*\n\r]/g, '').replace(/\s+/g, ' ').trim();
+    var ext = item.isVideo ? '.mp4' : '.png';
+    var defaultName = (item.isVideo ? 'video_' : 'image_') + item.idx;
+    var safe = (item.prompt || defaultName).replace(/[<>:"/\\|?*\n\r]/g, '').replace(/\s+/g, ' ').trim();
     if (safe.length > 180) safe = safe.substring(0, 180);
-    var fname = safe + (item.suffix ? ' (' + item.suffix + ')' : '') + '.png';
+    var fname = safe + (item.suffix ? ' (' + item.suffix + ')' : '') + ext;
     try {
       var r = await fetch(item.url);
       if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -811,7 +813,8 @@
   // === V2 API REPLAY ===
   // Hardcoded constants (reverse-engineered from Flow)
   var FP_SITEKEY = '6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV';
-  var FP_ACTION = 'IMAGE_GENERATION';
+  var FP_ACTION_IMAGE = 'IMAGE_GENERATION';
+  var FP_ACTION_VIDEO = 'VIDEO_GENERATION';
   var MODEL_MAP = {
     nano_banana_pro: 'GEM_PIX_2',
     nano_banana_2: 'NARWHAL',
@@ -824,6 +827,17 @@
     '4:3': 'IMAGE_ASPECT_RATIO_FULLSCREEN',
     '3:4': 'IMAGE_ASPECT_RATIO_TALL'
   };
+  // Video model key resolver (TurboFlow reverse-engineered)
+  function videoModelKey(modelSetting, aspectRatio) {
+    var portrait = aspectRatio === '9:16';
+    var key;
+    if (modelSetting === 'veo_fast') {
+      key = portrait ? 'veo_3_1_t2v_fast_portrait' : 'veo_3_1_t2v_fast';
+    } else { // veo_quality (default)
+      key = portrait ? 'veo_3_1_t2v_portrait' : 'veo_3_1_t2v';
+    }
+    return key;
+  }
 
   function uuid4() {
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
@@ -850,14 +864,15 @@
   }
 
   // Fresh recaptcha token via grecaptcha (no hook needed — siteKey hardcoded)
-  async function getFreshRecaptchaAuto() {
+  async function getFreshRecaptchaAuto(action) {
+    var ac = action || FP_ACTION_IMAGE;
     if (!window.grecaptcha || !window.grecaptcha.enterprise) {
       throw new Error('grecaptcha_not_loaded — abre Flow y espera 2-3s');
     }
     return await new Promise(function(resolve, reject) {
       try {
         window.grecaptcha.enterprise.ready(function() {
-          window.grecaptcha.enterprise.execute(FP_SITEKEY, { action: FP_ACTION }).then(resolve, reject);
+          window.grecaptcha.enterprise.execute(FP_SITEKEY, { action: ac }).then(resolve, reject);
         });
       } catch (e) { reject(e); }
     });
@@ -931,6 +946,100 @@
     } catch (e) {
       return { ok: false, status: 0, text: 'fetch_err: ' + e.message };
     }
+  }
+
+  // Build video request body (text-to-video)
+  function buildVideoBody(promptText, opts) {
+    var sessionId = ';' + Date.now() + Math.floor(Math.random() * 1000);
+    var portrait = opts.aspectRatio === '9:16';
+    var aspectEnum = portrait ? 'VIDEO_ASPECT_RATIO_PORTRAIT' : 'VIDEO_ASPECT_RATIO_LANDSCAPE';
+    var modelKey = videoModelKey(opts.model, opts.aspectRatio);
+    return {
+      mediaGenerationContext: { batchId: uuid4() },
+      clientContext: {
+        projectId: opts.projectId,
+        tool: 'PINHOLE',
+        recaptchaContext: { applicationType: 'RECAPTCHA_APPLICATION_TYPE_WEB', token: 'PLACEHOLDER' },
+        sessionId: sessionId,
+        userPaygateTier: 'PAYGATE_TIER_NOT_PAID'
+      },
+      requests: [{
+        aspectRatio: aspectEnum,
+        seed: Math.floor(Math.random() * 1000000),
+        metadata: {},
+        textInput: { structuredPrompt: { parts: [{ text: promptText }] } },
+        videoModelKey: modelKey
+      }],
+      useV2ModelConfig: true
+    };
+  }
+
+  // Async video generation request (text-to-video). Returns { ok, status, text, accessToken, projectId }
+  async function replayAutoVideoOne(promptText, opts) {
+    var projectId = getProjectIdFromUrl();
+    if (!projectId) return { ok: false, status: 0, text: 'no_project_id_in_url' };
+    var accessToken = await getFlowAccessToken();
+    if (!accessToken) return { ok: false, status: 0, text: 'session_auth_failed' };
+    var rcToken;
+    try { rcToken = await getFreshRecaptchaAuto(FP_ACTION_VIDEO); }
+    catch (e) { return { ok: false, status: 0, text: 'recaptcha_err: ' + e.message }; }
+    var body = buildVideoBody(promptText, {
+      model: opts.model,
+      aspectRatio: opts.aspectRatio,
+      projectId: projectId
+    });
+    body.clientContext.recaptchaContext.token = rcToken;
+    var url = 'https://aisandbox-pa.googleapis.com/v1/video:batchAsyncGenerateVideoText';
+    try {
+      var resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8', 'Authorization': 'Bearer ' + accessToken },
+        body: JSON.stringify(body)
+      });
+      var txt = await resp.text();
+      return { ok: resp.ok, status: resp.status, text: txt, accessToken: accessToken, projectId: projectId };
+    } catch (e) {
+      return { ok: false, status: 0, text: 'fetch_err: ' + e.message };
+    }
+  }
+
+  // Poll video generation status until completed or failed. Returns { ok, status }.
+  async function pollVideoStatus(mediaId, projectId, accessToken, maxAttempts) {
+    maxAttempts = maxAttempts || 120; // 120 × 5s = 10 min
+    for (var attempt = 0; attempt < maxAttempts; attempt++) {
+      if (STOP) return { ok: false, status: 'stopped' };
+      await wait(5000);
+      try {
+        var resp = await fetch('https://aisandbox-pa.googleapis.com/v1/video:batchCheckAsyncVideoGenerationStatus', {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=UTF-8', 'Authorization': 'Bearer ' + accessToken },
+          body: JSON.stringify({ media: [{ name: mediaId, projectId: projectId }] })
+        });
+        if (resp.status === 401 || resp.status === 403) {
+          // Token may have rotated — refresh and retry next loop iteration
+          var fresh = await getFlowAccessToken();
+          if (fresh) accessToken = fresh;
+          continue;
+        }
+        if (!resp.ok) continue;
+        var data = await resp.json();
+        var m = data && data.media && data.media[0];
+        var st = m && m.mediaMetadata && m.mediaStatus && m.mediaStatus.mediaGenerationStatus;
+        if (!st) st = m && m.mediaMetadata && m.mediaMetadata.mediaStatus && m.mediaMetadata.mediaStatus.mediaGenerationStatus;
+        if (st === 'MEDIA_GENERATION_STATUS_COMPLETED' || st === 'MEDIA_GENERATION_STATUS_COMPLETE' || st === 'MEDIA_GENERATION_STATUS_SUCCESSFUL') {
+          return { ok: true, status: st };
+        }
+        if (st === 'MEDIA_GENERATION_STATUS_FAILED') {
+          return { ok: false, status: st };
+        }
+      } catch (e) {}
+      // Refresh auth every ~60s
+      if (attempt % 12 === 11) {
+        var newAuth = await getFlowAccessToken();
+        if (newAuth) accessToken = newAuth;
+      }
+    }
+    return { ok: false, status: 'timeout' };
   }
 
   // Find latest captured batchGenerateImages request to use as template
@@ -1082,6 +1191,9 @@
     veo_quality: 'Veo 3.1 Quality'
   };
 
+  // Track in-flight video polls so we can wait before reloading at end of batch
+  var pendingVideoPolls = 0;
+
   async function replayPrompts(lista, _ignoredTpl) {
     if (ejecutando) { vlog('⚠️ Ya en ejecución', '#f59e0b'); return; }
     ejecutando = true; STOP = false;
@@ -1114,57 +1226,123 @@
       }
       var raw = lista[i].trim();
       indiceActual = i;
+      var isVideoMode = settings.mode === 'video';
       vlog('[' + (i+1) + '/' + lista.length + '] ' + raw.substring(0, 60) + '...', '#6366f1');
       var humanModel = MODEL_LABEL[settings.model] || settings.model;
-      vlog('  → ' + humanModel + ' · ' + settings.aspectRatio + ' · ×' + (settings.generationCount || 1), '#6b7280');
-      var r = await replayAutoOne(raw, settings);
-      if (r.ok) {
-        // Extract image URLs from response and send to sidepanel for live preview
-        try {
-          var rj = JSON.parse(r.text || '{}');
-          var mediaUrls = extractMediaUrls(rj);
-          if (mediaUrls.length > 0) {
-            ok += mediaUrls.length;
-            var newItems = [];
-            for (var mi = 0; mi < mediaUrls.length; mi++) {
-              var item = {
-                url: mediaUrls[mi],
-                prompt: raw,
-                idx: i + 1,
-                suffix: mediaUrls.length > 1 ? String.fromCharCode(97 + mi) : ''
-              };
-              generatedMedia.push(item);
-              newItems.push(item);
+      vlog('  → ' + humanModel + ' · ' + settings.aspectRatio + ' · ×' + (settings.generationCount || 1) + (isVideoMode ? ' · vídeo' : ''), '#6b7280');
+
+      var r;
+      // ===== VIDEO branch =====
+      if (isVideoMode) {
+        var videoCount = Math.max(1, parseInt(settings.generationCount, 10) || 1);
+        var videoBatch = [];
+        var allVideosOk = true;
+        var lastErr = null;
+        // Fire N video requests sequentially (one per generation count)
+        for (var vc = 0; vc < videoCount; vc++) {
+          var rv = await replayAutoVideoOne(raw, settings);
+          if (!rv.ok) { allVideosOk = false; lastErr = rv; break; }
+          var rvj = null;
+          try { rvj = JSON.parse(rv.text || '{}'); } catch (e) {}
+          var vMediaId = rvj && rvj.media && rvj.media[0] && rvj.media[0].name;
+          if (!vMediaId) { allVideosOk = false; lastErr = { ok: false, status: 0, text: 'no_mediaId' }; break; }
+          var vUrl = 'https://labs.google/fx/api/trpc/media.getMediaUrlRedirect?name=' + encodeURIComponent(vMediaId);
+          var vItem = {
+            url: vUrl, prompt: raw, idx: i + 1,
+            suffix: videoCount > 1 ? String.fromCharCode(97 + vc) : '',
+            isVideo: true, mediaId: vMediaId,
+            accessToken: rv.accessToken, projectId: rv.projectId
+          };
+          videoBatch.push(vItem);
+          generatedMedia.push(vItem);
+          ok++;
+          if (vc < videoCount - 1) await wait(800);
+        }
+        if (allVideosOk && videoBatch.length > 0) {
+          saveGenerated();
+          window.postMessage({
+            source: 'gf-main',
+            payload: { type: 'images_ready', promptIndex: i + 1, prompt: raw, urls: videoBatch.map(function(x){return x.url;}), isVideo: true }
+          }, '*');
+          emitProgress();
+          // Start background polling for each video; download when ready
+          (function(items) {
+            items.forEach(function(it) {
+              pendingVideoPolls++;
+              (async function() {
+                try {
+                  var status = await pollVideoStatus(it.mediaId, it.projectId, it.accessToken);
+                  if (!status.ok) {
+                    vlog('  ⏰ Vídeo "' + raw.substring(0,40) + '" no completado: ' + status.status, '#f59e0b');
+                    window.postMessage({ source: 'gf-main', payload: { type: 'media_failed', mediaId: it.mediaId } }, '*');
+                    return;
+                  }
+                  window.postMessage({ source: 'gf-main', payload: { type: 'media_ready', mediaId: it.mediaId, url: it.url, isVideo: true } }, '*');
+                  await wait(1500);
+                  var dlOkVideo = await descargarUnaImagen(it);
+                  if (dlOkVideo) { dlOk++; emitProgress(); }
+                } finally {
+                  pendingVideoPolls--;
+                }
+              })();
+            });
+          })(videoBatch);
+          r = { ok: true, status: 200, text: '' };
+        } else {
+          r = lastErr || { ok: false, status: 0, text: 'video_fail' };
+        }
+      } else {
+        // ===== IMAGE branch (existing flow) =====
+        r = await replayAutoOne(raw, settings);
+        if (r.ok) {
+          // Extract image URLs from response and send to sidepanel for live preview
+          try {
+            var rj = JSON.parse(r.text || '{}');
+            var mediaUrls = extractMediaUrls(rj);
+            if (mediaUrls.length > 0) {
+              ok += mediaUrls.length;
+              var newItems = [];
+              for (var mi = 0; mi < mediaUrls.length; mi++) {
+                var item = {
+                  url: mediaUrls[mi],
+                  prompt: raw,
+                  idx: i + 1,
+                  suffix: mediaUrls.length > 1 ? String.fromCharCode(97 + mi) : ''
+                };
+                generatedMedia.push(item);
+                newItems.push(item);
+              }
+              saveGenerated();
+              window.postMessage({
+                source: 'gf-main',
+                payload: {
+                  type: 'images_ready',
+                  promptIndex: i + 1,
+                  prompt: raw,
+                  urls: mediaUrls
+                }
+              }, '*');
+              emitProgress();
+              // Always auto-download each new image (small delay so file is ready on server)
+              (async function(items) {
+                await wait(2000);
+                for (var ai = 0; ai < items.length; ai++) {
+                  var dlSuccess = await descargarUnaImagen(items[ai]);
+                  if (dlSuccess) { dlOk++; emitProgress(); }
+                  await wait(500);
+                }
+              })(newItems);
+            } else {
+              ok++;
+              emitProgress();
             }
-            saveGenerated();
-            window.postMessage({
-              source: 'gf-main',
-              payload: {
-                type: 'images_ready',
-                promptIndex: i + 1,
-                prompt: raw,
-                urls: mediaUrls
-              }
-            }, '*');
-            emitProgress();
-            // Always auto-download each new image (small delay so file is ready on server)
-            (async function(items) {
-              await wait(2000);
-              for (var ai = 0; ai < items.length; ai++) {
-                var dlSuccess = await descargarUnaImagen(items[ai]);
-                if (dlSuccess) { dlOk++; emitProgress(); }
-                await wait(500);
-              }
-            })(newItems);
-          } else {
+          } catch(e) {
             ok++;
             emitProgress();
           }
-        } catch(e) {
-          ok++;
-          emitProgress();
         }
-      } else {
+      }
+      if (!r.ok) {
         fail++;
         vlog('  ❌ HTTP ' + r.status + ' ' + (r.text || '').substring(0, 200), '#ef4444');
         guardarFallido(raw);
@@ -1225,7 +1403,18 @@
     localStorage.removeItem('fp_auto_resume');
     ejecutando = false;
     window.postMessage({ source: 'gf-main', payload: { type: 'complete' } }, '*');
-    // Always auto-reload Flow tab to surface generated images in grid
+    // If videos still rendering, wait for polls before reloading (keeps polling alive)
+    if (pendingVideoPolls > 0) {
+      vlog('⏳ Esperando ' + pendingVideoPolls + ' vídeos en renderizado...', '#6b7280');
+      var waitMax = 720; // up to 12 minutes (720 × 1s)
+      var waited = 0;
+      while (pendingVideoPolls > 0 && waited < waitMax) {
+        await wait(1000);
+        waited++;
+      }
+      if (pendingVideoPolls > 0) vlog('⏰ ' + pendingVideoPolls + ' vídeos no completaron a tiempo. Refrescando igualmente.', '#f59e0b');
+      else vlog('✅ Todos los vídeos completados', '#22c55e');
+    }
     vlog('🔄 Refrescando Flow en 3s...', '#6b7280');
     setTimeout(function() { window.location.reload(); }, 3000);
   }
@@ -1408,7 +1597,7 @@
   });
 
   // === INIT ===
-  var GF_V = 'v0.9.4';
+  var GF_V = 'v0.10.0';
   var prevV = localStorage.getItem('gf_version');
   if (prevV !== GF_V) {
     localStorage.setItem('gf_version', GF_V);
