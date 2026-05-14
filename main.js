@@ -891,7 +891,7 @@
     _fpTrustedPending[p.reqId](p.response || { ok: false, error: 'no_response' });
     delete _fpTrustedPending[p.reqId];
   });
-  function _fpTrustedSend(payload) {
+  function _fpTrustedSend(payload, timeoutMs) {
     return new Promise(function(resolve) {
       var rid = ++_fpTrustedReqId;
       _fpTrustedPending[rid] = resolve;
@@ -902,8 +902,11 @@
           _fpTrustedPending[rid]({ ok: false, error: 'timeout' });
           delete _fpTrustedPending[rid];
         }
-      }, 8000);
+      }, timeoutMs || 8000);
     });
+  }
+  async function trustedClickAt(x, y) {
+    return await _fpTrustedSend({ type: 'trusted_click', x: x, y: y });
   }
   async function trustedClick(el) {
     if (!el || !el.getBoundingClientRect) return { ok: false, error: 'no_element' };
@@ -912,11 +915,52 @@
     var rect = el.getBoundingClientRect();
     var x = Math.round(rect.left + rect.width * (0.35 + Math.random() * 0.3));
     var y = Math.round(rect.top + rect.height * (0.35 + Math.random() * 0.3));
-    return await _fpTrustedSend({ type: 'trusted_click', x: x, y: y });
+    _fpLastMousePos = { x: x, y: y };
+    return await trustedClickAt(x, y);
+  }
+  async function trustedMouseMove(x, y) {
+    _fpLastMousePos = { x: x, y: y };
+    return await _fpTrustedSend({ type: 'trusted_mouse_move', x: x, y: y });
+  }
+  // Mouse path: arc above the toolbar so it doesn't drag across nearby buttons (model selector etc).
+  // Curve goes UP first, then over to target — avoids hovering siblings in same horizontal toolbar.
+  async function trustedMousePath(toX, toY) {
+    var fromX = _fpLastMousePos.x;
+    var fromY = _fpLastMousePos.y;
+    // Apex point: 80-160px above the higher of the two y-coords to clear toolbar height
+    var apexY = Math.min(fromY, toY) - (80 + Math.random() * 80);
+    apexY = Math.max(40, apexY); // don't go off-screen
+    var apexX = Math.round(fromX + (toX - fromX) * 0.5 + (Math.random() - 0.5) * 30);
+    var steps = 3;
+    var pts = [
+      { x: fromX, y: fromY },
+      { x: apexX, y: apexY },
+      { x: toX, y: toY }
+    ];
+    // Catmull-Rom-like interpolation between 3 points (smooth arc)
+    for (var seg = 0; seg < 2; seg++) {
+      var a = pts[seg], b = pts[seg + 1];
+      for (var s = 1; s <= steps; s++) {
+        var t = s / steps;
+        var et = 1 - Math.pow(1 - t, 2);
+        var x = Math.round(a.x + (b.x - a.x) * et + (Math.random() - 0.5) * 6);
+        var y = Math.round(a.y + (b.y - a.y) * et + (Math.random() - 0.5) * 6);
+        await trustedMouseMove(x, y);
+        await wait(20 + Math.random() * 30);
+      }
+    }
+  }
+  async function trustedTypeText(text) {
+    var len = (text || '').length;
+    // Generous timeout: ~150ms per char + 10s buffer (covers occasional long pauses)
+    var to = 10000 + len * 200;
+    return await _fpTrustedSend({ type: 'trusted_type_text', text: text }, to);
   }
   async function trustedDetach() {
     return await _fpTrustedSend({ type: 'trusted_detach' });
   }
+  // Track last mouse position for natural curved paths between actions
+  var _fpLastMousePos = { x: Math.floor((typeof window !== 'undefined' ? window.innerWidth : 800) / 2), y: Math.floor((typeof window !== 'undefined' ? window.innerHeight : 600) / 2) };
 
   // ===== Response capture (simulated mode) =====
   // capture.js fires 'gf-flow-response' messages after each generation fetch resolves.
@@ -1064,28 +1108,102 @@
   }
 
   // Poll video generation status until completed or failed. Returns { ok, status }.
-  // ===== SIMULATED MODE — writes prompt + clicks "Crear" via CDP trusted click =====
-  // Lets Flow itself fire grecaptcha.execute inside its onClick context → higher reCAPTCHA score.
-  // Slower than API mode + shows yellow "FlowPilot is debugging" banner.
+  // ===== SIMULATED MODE — full human-like interaction (mouse path + click + type + click) =====
+  // Mouse curves + trusted clicks + real key events via CDP → reCAPTCHA sees realistic behavior.
+  // Slower (~10-15s per prompt) but bypasses behavioral scoring.
   async function simulatedSendOne(promptText, isVideo) {
     var editorDom = obtenerEditor();
     if (!editorDom) return { ok: false, status: 0, text: 'editor_not_found' };
 
-    // Write prompt via Slate API (no clicks)
-    var wrote = await escribirPrompt(promptText);
-    if (!wrote) return { ok: false, status: 0, text: 'write_failed' };
-    await wait(500 + Math.random() * 600);
+    // Make sure editor in viewport
+    try { editorDom.scrollIntoView({ behavior: 'instant', block: 'center' }); } catch (e) {}
+    await wait(200);
 
-    // Find "Crear" button
+    // === STEP 1: clear existing text via Slate select+delete ===
+    if ((editorDom.textContent || '').trim().length > 0) {
+      try {
+        var slate = getSlateEditor(editorDom);
+        if (slate && slate.children) {
+          var lastIdx = slate.children.length - 1;
+          var lastNode = slate.children[lastIdx];
+          var lastChildIdx = lastNode && lastNode.children ? lastNode.children.length - 1 : 0;
+          var lastTextNode = lastNode && lastNode.children ? lastNode.children[lastChildIdx] : null;
+          var endOff = lastTextNode && typeof lastTextNode.text === 'string' ? lastTextNode.text.length : 0;
+          slate.select({ anchor: { path: [0,0], offset: 0 }, focus: { path: [lastIdx, lastChildIdx], offset: endOff } });
+          slate.deleteFragment();
+          if (typeof slate.onChange === 'function') slate.onChange();
+        }
+      } catch (e) {}
+      await wait(200);
+    }
+
+    // === STEP 2: curve mouse to editor + click to focus ===
+    var edRect = editorDom.getBoundingClientRect();
+    var edX = Math.round(edRect.left + edRect.width * (0.25 + Math.random() * 0.5));
+    var edY = Math.round(edRect.top + edRect.height * (0.25 + Math.random() * 0.5));
+    await trustedMousePath(edX, edY);
+    await wait(80 + Math.random() * 140);
+    await trustedClickAt(edX, edY);
+    await wait(180 + Math.random() * 220);
+
+    // Force focus (browser-level) + place Slate caret. Without this, CDP insertText goes to void.
+    try { editorDom.focus(); } catch (e) {}
+    try {
+      var slateE = getSlateEditor(editorDom);
+      if (slateE) {
+        slateE.select({ anchor: { path: [0, 0], offset: 0 }, focus: { path: [0, 0], offset: 0 } });
+      }
+    } catch (e) {}
+    await wait(100);
+
+    // === STEP 3: type text char-by-char via CDP Input.insertText with realistic rhythm ===
+    var typeRes = await trustedTypeText(promptText);
+    if (!typeRes || !typeRes.ok) return { ok: false, status: 0, text: 'type_failed: ' + (typeRes && typeRes.error || '?') };
+
+    // Verify text actually landed in editor; if not, fallback to Slate API insertText
+    var after = (editorDom.textContent || '').trim();
+    if (after.length < Math.min(5, promptText.length)) {
+      vlog('  ⚠️ CDP type sin efecto, fallback Slate', '#f59e0b');
+      try {
+        var slateE2 = getSlateEditor(editorDom);
+        if (slateE2) {
+          slateE2.select({ anchor: { path: [0, 0], offset: 0 }, focus: { path: [0, 0], offset: 0 } });
+          slateE2.insertText(promptText);
+          if (typeof slateE2.onChange === 'function') slateE2.onChange();
+          await wait(200);
+        } else {
+          await escribirPrompt(promptText);
+        }
+      } catch (e) {
+        return { ok: false, status: 0, text: 'fallback_write_failed: ' + e.message };
+      }
+      after = (editorDom.textContent || '').trim();
+      if (after.length < Math.min(5, promptText.length)) {
+        return { ok: false, status: 0, text: 'write_no_effect' };
+      }
+    }
+
+    // === STEP 4: human "review" pause before clicking Crear ===
+    await wait(700 + Math.random() * 1300);
+
+    // === STEP 5: find Crear button, curve mouse, hover, click ===
     var btn = obtenerBotonEnviar();
     if (!btn) return { ok: false, status: 0, text: 'crear_button_not_found' };
+    try { btn.scrollIntoView({ behavior: 'instant', block: 'center' }); } catch (e) {}
+    await wait(150);
+    var btnRect = btn.getBoundingClientRect();
+    var btnX = Math.round(btnRect.left + btnRect.width * (0.3 + Math.random() * 0.4));
+    var btnY = Math.round(btnRect.top + btnRect.height * (0.3 + Math.random() * 0.4));
+    await trustedMousePath(btnX, btnY);
+    // Hover (humans dwell briefly before clicking)
+    await wait(180 + Math.random() * 280);
 
-    // Reset response slot before click; click triggers Flow's onClick → grecaptcha → fetch
+    // === STEP 6: arm response capture, click ===
     _fpResetFlowResponse();
-    var cr = await trustedClick(btn);
+    var cr = await trustedClickAt(btnX, btnY);
     if (!cr || !cr.ok) return { ok: false, status: 0, text: 'trusted_click_failed: ' + (cr && cr.error || '?') };
 
-    // Wait for response intercepted by capture.js
+    // === STEP 7: await intercepted response from capture.js ===
     var resp = await _fpWaitFlowResponse(isVideo ? 35000 : 25000);
     if (!resp) return { ok: false, status: 0, text: 'no_response_intercepted' };
     return { ok: resp.status >= 200 && resp.status < 300, status: resp.status, text: resp.body || '' };
@@ -1305,9 +1423,13 @@
         if (lista !== prompts) { prompts = lista; }
         indiceActual = i;
         ejecutando = false;
-        // Notify sidepanel to mark pending skeletons as cancelled
+        // Clear auto-resume on STOP so reload doesn't restart batch
+        try {
+          localStorage.removeItem('fp_auto_resume');
+          localStorage.removeItem('fp_resume_retries');
+        } catch (e) {}
         window.postMessage({ source: 'gf-main', payload: { type: 'batch_cancelled' } }, '*');
-        // Auto-reload Flow tab (so generated-so-far appear in grid)
+        try { trustedDetach(); } catch (e) {}
         vlog('🔄 Refrescando Flow en 3s...', '#6b7280');
         setTimeout(function() { window.location.reload(); }, 3000);
         return;
@@ -1621,9 +1743,15 @@
     if (msg.action === 'stop') {
       var wasRunning = ejecutando;
       STOP = true; ejecutando = false;
+      // Clear any pending auto-resume so reload doesn't restart batch
+      try {
+        localStorage.removeItem('fp_auto_resume');
+        localStorage.removeItem('fp_resume_retries');
+      } catch (e) {}
       vlog('⛔ Detenido', '#ef4444');
       if (wasRunning) {
         window.postMessage({ source: 'gf-main', payload: { type: 'batch_cancelled' } }, '*');
+        try { trustedDetach(); } catch (e) {}
         vlog('🔄 Refrescando Flow en 3s...', '#6b7280');
         setTimeout(function() { window.location.reload(); }, 3000);
       }
@@ -1757,7 +1885,7 @@
   });
 
   // === INIT ===
-  var GF_V = 'v0.11.0';
+  var GF_V = 'v0.11.6';
   var prevV = localStorage.getItem('gf_version');
   if (prevV !== GF_V) {
     localStorage.setItem('gf_version', GF_V);

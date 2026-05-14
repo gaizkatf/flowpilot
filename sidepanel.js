@@ -206,7 +206,6 @@ function applyLanguage() {
   // Refresh dynamic UI sections that build their own text
   if (typeof updateLivePreview === 'function') updateLivePreview();
   if (typeof recountPasted === 'function') recountPasted();
-  if (typeof updateMethodHint === 'function') updateMethodHint();
   ensureGalleryEmpty();
 }
 
@@ -391,17 +390,9 @@ function initControls() {
     sendToContent({ action: 'setEnabled', enabled: currentSettings.enabled });
   });
 
-  // Method segment (api / simulated)
-  var methodSeg = document.getElementById('methodSeg');
-  if (methodSeg) {
-    setSegValue(methodSeg, currentSettings.method || 'api');
-    setupSeg(methodSeg, function(val) {
-      currentSettings.method = val;
-      saveSettings(); sendSettings();
-      updateMethodHint();
-    });
-  }
-  updateMethodHint();
+  // Method always API for now (simulated hidden, CDP fingerprint pending fix)
+  currentSettings.method = 'api';
+  saveSettings();
   updateLivePreview();
 }
 
@@ -498,23 +489,62 @@ function setConnected(val) {
   refreshConnectionUI();
 }
 
+var _fpConnAttempts = 0;
+var _fpConnTimer = null;
+
 async function checkConnection() {
   var tab = await getActiveFlowTab();
-  if (!tab) { setConnected(false); return; }
+  if (!tab) {
+    setConnected(false);
+    _fpConnAttempts = 0;
+    return;
+  }
   try {
     var resp = await chrome.tabs.sendMessage(tab.id, { action: 'ping' });
     var ok = resp && resp.status === 'ok';
     setConnected(ok);
-    if (ok && !galleryRestored) {
-      galleryRestored = true;
-      sendToContent({ action: 'restoreGallery' }, true);
+    if (ok) {
+      _fpConnAttempts = 999; // settle to slow polling
+      if (!galleryRestored) {
+        galleryRestored = true;
+        sendToContent({ action: 'restoreGallery' }, true);
+      }
+    } else {
+      _fpConnAttempts++;
     }
   } catch(e) {
     setConnected(false);
+    _fpConnAttempts++;
   }
 }
-setInterval(checkConnection, 3000);
-checkConnection();
+
+// Adaptive polling: fast (1s) during initial connect, slow (4s) once stable
+function scheduleNextCheck() {
+  if (_fpConnTimer) clearTimeout(_fpConnTimer);
+  var delay = _fpConnAttempts < 15 ? 1000 : 4000;
+  _fpConnTimer = setTimeout(function() {
+    checkConnection().finally(scheduleNextCheck);
+  }, delay);
+}
+
+function forceImmediateCheck() {
+  _fpConnAttempts = 0;
+  if (_fpConnTimer) { clearTimeout(_fpConnTimer); _fpConnTimer = null; }
+  checkConnection().finally(scheduleNextCheck);
+}
+
+// React to tab/window changes immediately instead of waiting for poll
+try {
+  chrome.tabs.onActivated.addListener(function() { forceImmediateCheck(); });
+  chrome.tabs.onUpdated.addListener(function(tabId, changeInfo) {
+    if (changeInfo.status === 'complete' || changeInfo.url) forceImmediateCheck();
+  });
+  if (chrome.windows && chrome.windows.onFocusChanged) {
+    chrome.windows.onFocusChanged.addListener(function() { forceImmediateCheck(); });
+  }
+} catch (e) {}
+
+forceImmediateCheck();
 
 // ===================== Log =====================
 function addLog(text, color) {

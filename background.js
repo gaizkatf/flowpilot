@@ -89,16 +89,55 @@ try {
   });
 } catch (e) {}
 
-// ===== CHROME DEBUGGER (trusted click) =====
+// ===== CHROME DEBUGGER (trusted click + passive network monitoring) =====
 var attachedTabs = new Set();
+
 async function ensureAttached(tabId) {
   if (attachedTabs.has(tabId)) return;
   await chrome.debugger.attach({ tabId: tabId }, '1.3');
   attachedTabs.add(tabId);
+  // Enable Network domain so we passively observe responses (no page-side fetch wrapper needed)
+  try {
+    await chrome.debugger.sendCommand({ tabId: tabId }, 'Network.enable', {});
+  } catch (e) {}
 }
+
 chrome.tabs.onRemoved.addListener(function(tabId) { attachedTabs.delete(tabId); });
 chrome.debugger.onDetach.addListener(function(source) {
   if (source && source.tabId) attachedTabs.delete(source.tabId);
+});
+
+// Listen for Network responses. When a generation URL completes, fetch body + forward to content script.
+function isGenerationUrl(url) {
+  if (!url) return false;
+  return /aisandbox-pa\.googleapis\.com\/v1\/(projects\/[^/]+\/flowMedia:batchGenerateImages|video:batchAsyncGenerateVideoText)/.test(url);
+}
+
+chrome.debugger.onEvent.addListener(function(source, method, params) {
+  if (!source || !source.tabId || !attachedTabs.has(source.tabId)) return;
+  if (method !== 'Network.responseReceived') return;
+  var resp = params && params.response;
+  if (!resp || !isGenerationUrl(resp.url)) return;
+  var reqId = params.requestId;
+  var status = resp.status;
+  // Wait briefly for body to be available, then fetch it
+  setTimeout(function() {
+    chrome.debugger.sendCommand({ tabId: source.tabId }, 'Network.getResponseBody', { requestId: reqId })
+      .then(function(result) {
+        var body = (result && result.body) || '';
+        // If base64, decode
+        if (result && result.base64Encoded) {
+          try { body = atob(body); } catch (e) {}
+        }
+        chrome.tabs.sendMessage(source.tabId, {
+          type: 'cdp_network_response',
+          url: resp.url,
+          status: status,
+          body: body
+        }).catch(function(){});
+      })
+      .catch(function(){});
+  }, 300);
 });
 
 // Allow sidepanel to trigger manual check + content-script trusted events
@@ -121,6 +160,43 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
         await chrome.debugger.sendCommand(target, 'Input.dispatchMouseEvent', { type: 'mousePressed', x: msg.x, y: msg.y, button: 'left', clickCount: 1, buttons: 1 });
         await new Promise(function(r){ setTimeout(r, 40 + Math.random() * 70); });
         await chrome.debugger.sendCommand(target, 'Input.dispatchMouseEvent', { type: 'mouseReleased', x: msg.x, y: msg.y, button: 'left', clickCount: 1, buttons: 0 });
+        sendResponse({ ok: true });
+      } catch (e) {
+        sendResponse({ ok: false, error: String(e && e.message || e) });
+      }
+    })();
+    return true;
+  }
+
+  if (msg.type === 'trusted_mouse_move') {
+    (async function() {
+      try {
+        await ensureAttached(tabId);
+        await chrome.debugger.sendCommand({ tabId: tabId }, 'Input.dispatchMouseEvent', {
+          type: 'mouseMoved', x: msg.x, y: msg.y, button: 'none', buttons: 0
+        });
+        sendResponse({ ok: true });
+      } catch (e) {
+        sendResponse({ ok: false, error: String(e && e.message || e) });
+      }
+    })();
+    return true;
+  }
+
+  if (msg.type === 'trusted_type_text') {
+    (async function() {
+      try {
+        await ensureAttached(tabId);
+        var text = String(msg.text || '');
+        for (var i = 0; i < text.length; i++) {
+          var ch = text[i];
+          // Use Input.insertText (fires beforeinput/input events Slate listens to)
+          await chrome.debugger.sendCommand({ tabId: tabId }, 'Input.insertText', { text: ch });
+          // Realistic typing rhythm: 30-80ms per char with occasional longer pauses
+          var pause = 30 + Math.random() * 50;
+          if (Math.random() < 0.05) pause += 200 + Math.random() * 300; // occasional "thinking"
+          await new Promise(function(r) { setTimeout(r, pause); });
+        }
         sendResponse({ ok: true });
       } catch (e) {
         sendResponse({ ok: false, error: String(e && e.message || e) });

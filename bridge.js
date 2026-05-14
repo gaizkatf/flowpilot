@@ -6,6 +6,14 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
     sendResponse({ status: alive ? 'ok' : 'no' });
     return true;
   }
+  // CDP Network response from background → forward to main.js as gf-flow-response
+  if (msg && msg.type === 'cdp_network_response') {
+    window.postMessage({
+      source: 'gf-flow-response',
+      payload: { url: msg.url, status: msg.status, body: msg.body, ts: Date.now() }
+    }, '*');
+    return;
+  }
   // Forward everything else to main.js (page world)
   window.postMessage({ source: 'gf-panel', payload: msg }, '*');
 });
@@ -17,7 +25,7 @@ window.addEventListener('message', function(event) {
   if (!p) return;
 
   // Trusted input commands: route to background, await response, post back
-  if (p.type === 'trusted_click' || p.type === 'trusted_key' || p.type === 'trusted_type_text' || p.type === 'trusted_detach') {
+  if (p.type === 'trusted_click' || p.type === 'trusted_key' || p.type === 'trusted_type_text' || p.type === 'trusted_mouse_move' || p.type === 'trusted_detach') {
     var reqId = p.reqId;
     chrome.runtime.sendMessage(p, function(resp) {
       var err = chrome.runtime.lastError ? chrome.runtime.lastError.message : null;
