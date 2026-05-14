@@ -531,17 +531,17 @@
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
     </div>
     <div class="update-text">
-      Nueva versión <strong id="updateVersion">—</strong> disponible
+      <span data-i18n="update_new_version">Nueva versión</span> <strong id="updateVersion">—</strong> <span data-i18n="update_available">disponible</span>
     </div>
-    <a class="update-cta" id="updateLink" href="#" target="_blank" rel="noopener">Descargar</a>
+    <a class="update-cta" id="updateLink" href="#" target="_blank" rel="noopener" data-i18n="update_download">Descargar</a>
     <button class="update-dismiss" id="updateDismiss" title="Ocultar">×</button>
   </div>
 
   <!-- ================== TABS ================== -->
   <nav class="tabs">
-    <button class="tab active" data-tab="crear">Crear</button>
-    <button class="tab" data-tab="resultados">Resultados <span class="tab-badge" id="tabResultsBadge">0</span></button>
-    <button class="tab" data-tab="estado">Estado</button>
+    <button class="tab active" data-tab="crear" data-i18n="tab_create">Crear</button>
+    <button class="tab" data-tab="resultados"><span data-i18n="tab_results">Resultados</span> <span class="tab-badge" id="tabResultsBadge">0</span></button>
+    <button class="tab" data-tab="estado" data-i18n="tab_status">Estado</button>
   </nav>
 
   <!-- ================== CREAR TAB ================== -->
@@ -550,7 +550,7 @@
     <!-- Live preview -->
     <div class="section">
       <div class="preview">
-        <div class="preview-head">Vas a crear con</div>
+        <div class="preview-head" data-i18n="preview_head">Vas a crear con</div>
         <div class="preview-body" id="lpBody">Nano Banana Pro · 16:9 · ×1</div>
         <div class="preview-meta" id="lpMeta">Auto-descarga activa · pausa 20s entre prompts</div>
       </div>
@@ -558,10 +558,10 @@
 
     <!-- Settings -->
     <div class="section">
-      <div class="section-label">Configuración</div>
+      <div class="section-label" data-i18n="sec_config">Configuración</div>
 
       <div class="row">
-        <div class="row-label">Tipo</div>
+        <div class="row-label" data-i18n="lbl_mode">Tipo</div>
         <div class="seg" id="modeSeg">
           <button class="on" data-val="image" data-i18n="mode_image">Imagen</button>
           <button data-val="video" data-i18n="mode_video">Vídeo</button>
@@ -577,7 +577,7 @@
       </div>
 
       <div class="row">
-        <div class="row-label">Modelo</div>
+        <div class="row-label" data-i18n="lbl_model">Modelo</div>
         <div class="sel-wrap">
           <select class="sel" id="modelSel"></select>
           <span class="sel-arrow">▾</span>
@@ -585,12 +585,12 @@
       </div>
 
       <div class="row">
-        <div class="row-label">Formato</div>
+        <div class="row-label" data-i18n="lbl_format">Formato</div>
         <div class="seg" id="ratioSeg"></div>
       </div>
 
       <div class="row">
-        <div class="row-label">Imágenes por prompt</div>
+        <div class="row-label" data-i18n-mode="lbl_gen">Imágenes por prompt</div>
         <div class="seg" id="genSeg">
           <button class="on" data-val="1">×1</button>
           <button data-val="2">×2</button>
@@ -600,7 +600,7 @@
       </div>
 
       <div class="row">
-        <div class="row-label">Pausa entre prompts</div>
+        <div class="row-label" data-i18n="lbl_pause">Pausa entre prompts</div>
         <div class="slider-row">
           <input type="range" class="slider" id="delaySl" min="5" max="120" value="20">
           <span class="slider-val" id="delayVal">20s</span>
@@ -608,7 +608,7 @@
       </div>
 
       <div class="toggle-row">
-        <span class="toggle-label">Extensión activa</span>
+        <span class="toggle-label" data-i18n="lbl_enable">Extensión activa</span>
         <label class="switch">
           <input type="checkbox" id="enabledTgl" checked>
           <div class="switch-track"></div>
@@ -619,32 +619,32 @@
 
     <!-- Paste prompts -->
     <div class="section">
-      <div class="section-label">Tus prompts</div>
-      <textarea class="ta" id="pasteArea" placeholder="Pega aquí tus prompts, uno por línea..."></textarea>
+      <div class="section-label" data-i18n="lbl_your_prompts">Tus prompts</div>
+      <textarea class="ta" id="pasteArea" data-i18n-placeholder="paste_placeholder" placeholder="Pega aquí tus prompts, uno por línea..."></textarea>
       <div class="ta-meta">
         <span class="ta-counter" id="pasteCount">0 prompts</span>
-        <button class="btn-mini" id="btnNuevo">o cargar archivo .txt</button>
+        <button class="btn-mini" id="btnNuevo" data-i18n="btn_load">o cargar archivo .txt</button>
       </div>
     </div>
 
     <!-- CTA -->
     <div class="section">
-      <button class="btn primary cta" id="btnLoadPasted">Crear imágenes</button>
+      <button class="btn primary cta" id="btnLoadPasted" data-i18n-mode="cta">Crear imágenes</button>
     </div>
 
     <!-- Progress card (visible while running) -->
     <div class="progress-card" id="progressCard">
       <div class="progress-head">
-        <span class="progress-title" id="progressTitle">Generando…</span>
+        <span class="progress-title" id="progressTitle" data-i18n="prog_running">Generando…</span>
         <span class="progress-meta" id="progressMeta">0 / 0</span>
       </div>
       <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
       <div class="progress-stats">
-        <span>Hechas <strong id="progressGen">0</strong></span>
-        <span>Descargadas <strong id="progressDl">0</strong></span>
-        <span>Fallidas <strong id="progressFail">0</strong></span>
+        <span><span data-i18n="prog_done">Hechas</span> <strong id="progressGen">0</strong></span>
+        <span><span data-i18n="prog_downloaded">Descargadas</span> <strong id="progressDl">0</strong></span>
+        <span><span data-i18n="prog_failed">Fallidas</span> <strong id="progressFail">0</strong></span>
       </div>
-      <div style="margin-top:10px;font-size:11px;color:var(--muted-2);font-feature-settings:'tnum'" id="progressEta">ETA calculando…</div>
+      <div style="margin-top:10px;font-size:11px;color:var(--muted-2);font-feature-settings:'tnum'" id="progressEta" data-i18n="eta_calc">ETA calculando…</div>
     </div>
 
     <input type="file" id="fileInput" accept=".txt" style="display:none">
@@ -654,18 +654,18 @@
   <section class="tab-content" id="tab-resultados">
     <div class="gallery-head">
       <div class="gallery-title">
-        Galería
+        <span data-i18n="gallery">Galería</span>
         <span class="gallery-meta" id="galleryMeta">0 imágenes</span>
       </div>
-      <button class="btn-mini" id="btnGalleryClear">Vaciar</button>
+      <button class="btn-mini" id="btnGalleryClear" data-i18n="btn_clear_gallery">Vaciar</button>
     </div>
 
     <div class="gallery-grid" id="liveGallery"></div>
 
     <div class="empty" id="galleryEmpty">
       <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-      <div class="empty-title">Aún no hay imágenes</div>
-      <div class="empty-text">Aparecerán aquí mientras se generan</div>
+      <div class="empty-title" data-i18n-mode="empty_title">Aún no hay imágenes</div>
+      <div class="empty-text" data-i18n-mode="empty_text">Aparecerán aquí mientras se generan</div>
     </div>
   </section>
 
@@ -677,29 +677,29 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
       </div>
       <div class="conn-info">
-        <div class="conn-text" id="connText">Abre Flow para empezar</div>
-        <div class="conn-meta" id="connMeta">Necesitas un proyecto activo</div>
+        <div class="conn-text" id="connText" data-i18n="status_disconnected">Abre Flow para empezar</div>
+        <div class="conn-meta" id="connMeta" data-i18n="status_meta_disconnected">Necesitas un proyecto activo</div>
       </div>
     </div>
 
     <div class="section">
-      <div class="section-label">Acciones</div>
+      <div class="section-label" data-i18n="sec_actions">Acciones</div>
       <div class="btn-grid">
-        <button class="btn" id="btnContinuar">Continuar</button>
-        <button class="btn" id="btnReintentar">Reintentar fallidos</button>
-        <button class="btn" id="btnDescargar">Descargar todo</button>
-        <button class="btn" id="btnEstado">Ver estado</button>
-        <button class="btn danger" id="btnDetener">Detener</button>
-        <button class="btn" id="btnLimpiar">Limpiar todo</button>
-        <button class="btn btn-full" id="btnPolitica">Exportar bloqueados por política</button>
-        <button class="btn btn-full" id="btnExportar">Exportar prompts fallidos</button>
+        <button class="btn" id="btnContinuar" data-i18n="btn_continue">Continuar</button>
+        <button class="btn" id="btnReintentar" data-i18n="btn_retry">Reintentar fallidos</button>
+        <button class="btn" id="btnDescargar" data-i18n="btn_download">Descargar todo</button>
+        <button class="btn" id="btnEstado" data-i18n="btn_status">Ver estado</button>
+        <button class="btn danger" id="btnDetener" data-i18n="btn_stop">Detener</button>
+        <button class="btn" id="btnLimpiar" data-i18n="btn_clear">Limpiar todo</button>
+        <button class="btn btn-full" id="btnPolitica" data-i18n="btn_policy">Exportar bloqueados por política</button>
+        <button class="btn btn-full" id="btnExportar" data-i18n="btn_export">Exportar prompts fallidos</button>
       </div>
     </div>
 
     <div class="section">
       <div class="section-label">
-        <span>Registro</span>
-        <button class="btn-mini" id="btnLogClear">Limpiar registro</button>
+        <span data-i18n="lbl_log">Registro</span>
+        <button class="btn-mini" id="btnLogClear" data-i18n="btn_clear_log">Limpiar registro</button>
       </div>
       <div id="log"></div>
     </div>
@@ -710,9 +710,9 @@
 <!-- ================== TUTORIAL MODAL ================== -->
 <div class="modal-overlay" id="tutorialModal">
   <div class="modal">
-    <h2>Cómo usar FlowPilot</h2>
+    <h2 data-i18n="tutorial_title">Cómo usar FlowPilot</h2>
     <div id="tutorialContent"></div>
-    <button class="btn primary" id="btnCloseTutorial" style="width:100%;margin-top:16px">Entendido</button>
+    <button class="btn primary" id="btnCloseTutorial" style="width:100%;margin-top:16px" data-i18n="btn_understood">Entendido</button>
   </div>
 </div>
 

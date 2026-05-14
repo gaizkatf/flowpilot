@@ -3,11 +3,21 @@ var currentLang = localStorage.getItem('gf_lang') || 'es';
 
 var i18n = {
   es: {
+    // Status
     status_connected: 'Flow detectado',
     status_disconnected: 'Abre Flow para empezar',
     status_meta_connected: 'Listo para crear',
     status_meta_disconnected: 'Necesitas un proyecto activo',
+    // Tabs
+    tab_create: 'Crear',
+    tab_results: 'Resultados',
+    tab_status: 'Estado',
+    // Sections
     sec_config: 'Configuración',
+    sec_actions: 'Acciones',
+    lbl_log: 'Registro',
+    lbl_your_prompts: 'Tus prompts',
+    // Settings
     lbl_mode: 'Tipo',
     mode_image: 'Imagen',
     mode_video: 'Vídeo',
@@ -16,10 +26,42 @@ var i18n = {
     sub_ingredients: 'Ingredientes',
     lbl_model: 'Modelo',
     lbl_format: 'Formato',
-    lbl_gen: 'Imágenes por prompt',
+    lbl_gen_image: 'Imágenes por prompt',
+    lbl_gen_video: 'Vídeos por prompt',
     lbl_pause: 'Pausa entre prompts',
     lbl_enable: 'Extensión activa',
+    // Live preview
+    preview_head: 'Vas a crear con',
+    preview_meta: 'Auto-descarga activa · pausa {n}s entre prompts',
+    // Paste / load
+    paste_placeholder: 'Pega aquí tus prompts, uno por línea...',
     btn_load: 'o cargar archivo .txt',
+    counter_singular: '{n} prompt',
+    counter_plural: '{n} prompts',
+    // CTA
+    cta_image: 'Crear imágenes',
+    cta_video: 'Crear vídeos',
+    // Progress
+    prog_running: 'Generando…',
+    prog_done: 'Hechas',
+    prog_downloaded: 'Descargadas',
+    prog_failed: 'Fallidas',
+    eta_calc: 'ETA calculando…',
+    eta_starting: 'Empezando…',
+    eta_completed: 'Completado en {t}',
+    eta_running: 'ETA {t}',
+    prog_stopped_title: 'Detenido',
+    prog_stopped_meta: 'Refrescando Flow…',
+    // Gallery
+    gallery: 'Galería',
+    gallery_count_image: '{n} imágenes',
+    gallery_count_video: '{n} vídeos',
+    btn_clear_gallery: 'Vaciar',
+    empty_title_image: 'Aún no hay imágenes',
+    empty_title_video: 'Aún no hay vídeos',
+    empty_text_image: 'Aparecerán aquí mientras se generan',
+    empty_text_video: 'Aparecerán aquí mientras se generan',
+    // Actions
     btn_continue: 'Continuar',
     btn_retry: 'Reintentar fallidos',
     btn_download: 'Descargar todo',
@@ -28,6 +70,15 @@ var i18n = {
     btn_clear: 'Limpiar todo',
     btn_policy: 'Exportar bloqueados por política',
     btn_export: 'Exportar prompts fallidos',
+    btn_clear_log: 'Limpiar registro',
+    // Update banner
+    update_new_version: 'Nueva versión',
+    update_available: 'disponible',
+    update_download: 'Descargar',
+    // Tutorial
+    tutorial_title: 'Cómo usar FlowPilot',
+    btn_understood: 'Entendido',
+    // Log messages
     log_ready: 'FlowPilot listo',
     log_help: 'Pulsa el icono de ayuda para ver el tutorial',
     log_empty: 'Archivo vacío',
@@ -35,14 +86,22 @@ var i18n = {
     log_no_tab: 'No se encontró pestaña de Flow',
     log_err_comm: 'Error comunicando con Flow: ',
     log_complete: 'Ejecución completada',
-    tutorial: '<h3>Cómo usar</h3><div class="item"><p><b>1.</b> Abre Google Flow y entra en un proyecto.</p></div><div class="item"><p><b>2.</b> En la pestaña <b>Crear</b>, configura modelo, formato y nº de imágenes por prompt.</p></div><div class="item"><p><b>3.</b> Pega tus prompts (uno por línea) o carga un archivo .txt.</p></div><div class="item"><p><b>4.</b> Pulsa <b>Crear imágenes</b>. Verás el progreso en tiempo real.</p></div><div class="item"><p><b>5.</b> En <b>Resultados</b> aparecerán las imágenes mientras se generan, con auto-descarga.</p></div><h3>Ajustes</h3><div class="item"><p><b>Pausa entre prompts:</b> espera entre cada generación. Sube a 30-60s para batches grandes.</p></div><div class="item"><p><b>Extensión activa:</b> apaga para detener cualquier ejecución en curso.</p></div>'
+    log_paste_first: 'Pega prompts antes de crear',
+    log_loaded_count: 'prompts cargados',
+    tutorial: '<h3>Cómo usar</h3><div class="item"><p><b>1.</b> Abre Google Flow y entra en un proyecto.</p></div><div class="item"><p><b>2.</b> En la pestaña <b>Crear</b>, configura modelo, formato y nº por prompt.</p></div><div class="item"><p><b>3.</b> Pega tus prompts (uno por línea) o carga un archivo .txt.</p></div><div class="item"><p><b>4.</b> Pulsa <b>Crear imágenes/vídeos</b>. Verás el progreso en tiempo real.</p></div><div class="item"><p><b>5.</b> En <b>Resultados</b> aparecerán las imágenes/vídeos mientras se generan, con auto-descarga.</p></div><h3>Ajustes</h3><div class="item"><p><b>Pausa entre prompts:</b> espera entre cada generación. Sube a 30-60s para batches grandes.</p></div><div class="item"><p><b>Extensión activa:</b> apaga para detener cualquier ejecución en curso.</p></div>'
   },
   en: {
     status_connected: 'Flow detected',
     status_disconnected: 'Open Flow to start',
     status_meta_connected: 'Ready to create',
     status_meta_disconnected: 'You need an active project',
+    tab_create: 'Create',
+    tab_results: 'Results',
+    tab_status: 'Status',
     sec_config: 'Settings',
+    sec_actions: 'Actions',
+    lbl_log: 'Log',
+    lbl_your_prompts: 'Your prompts',
     lbl_mode: 'Type',
     mode_image: 'Image',
     mode_video: 'Video',
@@ -51,10 +110,36 @@ var i18n = {
     sub_ingredients: 'Ingredients',
     lbl_model: 'Model',
     lbl_format: 'Format',
-    lbl_gen: 'Images per prompt',
+    lbl_gen_image: 'Images per prompt',
+    lbl_gen_video: 'Videos per prompt',
     lbl_pause: 'Pause between prompts',
     lbl_enable: 'Extension active',
+    preview_head: 'You will create with',
+    preview_meta: 'Auto-download on · {n}s pause between prompts',
+    paste_placeholder: 'Paste your prompts here, one per line...',
     btn_load: 'or load .txt file',
+    counter_singular: '{n} prompt',
+    counter_plural: '{n} prompts',
+    cta_image: 'Create images',
+    cta_video: 'Create videos',
+    prog_running: 'Generating…',
+    prog_done: 'Done',
+    prog_downloaded: 'Downloaded',
+    prog_failed: 'Failed',
+    eta_calc: 'ETA calculating…',
+    eta_starting: 'Starting…',
+    eta_completed: 'Completed in {t}',
+    eta_running: 'ETA {t}',
+    prog_stopped_title: 'Stopped',
+    prog_stopped_meta: 'Refreshing Flow…',
+    gallery: 'Gallery',
+    gallery_count_image: '{n} images',
+    gallery_count_video: '{n} videos',
+    btn_clear_gallery: 'Clear',
+    empty_title_image: 'No images yet',
+    empty_title_video: 'No videos yet',
+    empty_text_image: 'They will appear here while generating',
+    empty_text_video: 'They will appear here while generating',
     btn_continue: 'Continue',
     btn_retry: 'Retry failed',
     btn_download: 'Download all',
@@ -63,6 +148,12 @@ var i18n = {
     btn_clear: 'Clear everything',
     btn_policy: 'Export blocked by policy',
     btn_export: 'Export failed prompts',
+    btn_clear_log: 'Clear log',
+    update_new_version: 'New version',
+    update_available: 'available',
+    update_download: 'Download',
+    tutorial_title: 'How to use FlowPilot',
+    btn_understood: 'Got it',
     log_ready: 'FlowPilot ready',
     log_help: 'Click the help icon for the tutorial',
     log_empty: 'Empty file',
@@ -70,21 +161,50 @@ var i18n = {
     log_no_tab: 'Flow tab not found',
     log_err_comm: 'Error communicating with Flow: ',
     log_complete: 'Run complete',
-    tutorial: '<h3>How to use</h3><div class="item"><p><b>1.</b> Open Google Flow and enter a project.</p></div><div class="item"><p><b>2.</b> In the <b>Create</b> tab, set model, format and images per prompt.</p></div><div class="item"><p><b>3.</b> Paste your prompts (one per line) or load a .txt file.</p></div><div class="item"><p><b>4.</b> Click <b>Create images</b>. You will see live progress.</p></div><div class="item"><p><b>5.</b> In <b>Results</b> images will appear as they are generated, auto-downloaded.</p></div>'
+    log_paste_first: 'Paste prompts before creating',
+    log_loaded_count: 'prompts loaded',
+    tutorial: '<h3>How to use</h3><div class="item"><p><b>1.</b> Open Google Flow and enter a project.</p></div><div class="item"><p><b>2.</b> In the <b>Create</b> tab, set model, format and number per prompt.</p></div><div class="item"><p><b>3.</b> Paste your prompts (one per line) or load a .txt file.</p></div><div class="item"><p><b>4.</b> Click <b>Create images/videos</b>. You will see live progress.</p></div><div class="item"><p><b>5.</b> In <b>Results</b> images/videos will appear as they are generated, auto-downloaded.</p></div>'
   }
 };
+
+function tf(key, vars) {
+  var s = t(key);
+  if (vars) Object.keys(vars).forEach(function(k){ s = s.replace('{' + k + '}', vars[k]); });
+  return s;
+}
 
 function t(key) { return (i18n[currentLang] && i18n[currentLang][key]) || (i18n.es[key]) || key; }
 
 function applyLanguage() {
+  // Plain data-i18n
   document.querySelectorAll('[data-i18n]').forEach(function(el) {
     el.textContent = t(el.getAttribute('data-i18n'));
   });
+  // Placeholders
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(function(el) {
+    el.setAttribute('placeholder', t(el.getAttribute('data-i18n-placeholder')));
+  });
+  // Mode-dependent labels (lbl_gen/cta/empty_title/empty_text → +"_image" or "_video")
+  applyModeLabels();
+  // Tutorial body
   var tc = document.getElementById('tutorialContent');
   if (tc) tc.innerHTML = t('tutorial');
+  // Lang switch button state
   document.getElementById('btnLangEs').classList.toggle('active', currentLang === 'es');
   document.getElementById('btnLangEn').classList.toggle('active', currentLang === 'en');
   refreshConnectionUI();
+  // Refresh dynamic UI sections that build their own text
+  if (typeof updateLivePreview === 'function') updateLivePreview();
+  if (typeof recountPasted === 'function') recountPasted();
+  ensureGalleryEmpty();
+}
+
+function applyModeLabels() {
+  var suffix = currentSettings.mode === 'video' ? '_video' : '_image';
+  document.querySelectorAll('[data-i18n-mode]').forEach(function(el) {
+    var base = el.getAttribute('data-i18n-mode');
+    el.textContent = t(base + suffix);
+  });
 }
 
 // ===================== Settings =====================
@@ -212,7 +332,9 @@ function initControls() {
     rebuildModelSelect();
     rebuildRatios();
     saveSettings(); sendSettings();
+    applyModeLabels();
     updateLivePreview();
+    ensureGalleryEmpty();
   });
 
   setSegValue(videoSubSeg, currentSettings.videoSubMode || 'frames');
@@ -263,7 +385,7 @@ function updateLivePreview() {
   var lpMeta = document.getElementById('lpMeta');
   var modelLbl = MODEL_LABELS[currentSettings.model] || currentSettings.model;
   if (lpBody) lpBody.textContent = modelLbl + ' · ' + currentSettings.aspectRatio + ' · ×' + currentSettings.generationCount;
-  if (lpMeta) lpMeta.textContent = 'Auto-descarga activa · pausa ' + currentSettings.delaySeconds + 's entre prompts';
+  if (lpMeta) lpMeta.textContent = tf('preview_meta', { n: currentSettings.delaySeconds });
 }
 
 // ===================== Tabs =====================
@@ -388,13 +510,13 @@ function showProgress(total) {
   progressState = { total: total, gen: 0, dl: 0, fail: 0, startedAt: Date.now() };
   var card = document.getElementById('progressCard');
   if (card) card.classList.add('active');
-  document.getElementById('progressTitle').textContent = 'Generando…';
+  document.getElementById('progressTitle').textContent = t('prog_running');
   document.getElementById('progressMeta').textContent = '0 / ' + total;
   document.getElementById('progressFill').style.width = '0%';
   document.getElementById('progressGen').textContent = '0';
   document.getElementById('progressDl').textContent = '0';
   document.getElementById('progressFail').textContent = '0';
-  document.getElementById('progressEta').textContent = 'Empezando…';
+  document.getElementById('progressEta').textContent = t('eta_starting');
 }
 
 function updateProgress(gen, dl, fail) {
@@ -412,9 +534,9 @@ function updateProgress(gen, dl, fail) {
     var elapsed = (Date.now() - progressState.startedAt) / 1000;
     var perItem = elapsed / gen;
     var remaining = (progressState.total - gen) * perItem;
-    document.getElementById('progressEta').textContent = 'ETA ' + formatDuration(remaining);
+    document.getElementById('progressEta').textContent = tf('eta_running', { t: formatDuration(remaining) });
   } else if (gen >= progressState.total) {
-    document.getElementById('progressEta').textContent = 'Completado en ' + formatDuration((Date.now() - progressState.startedAt) / 1000);
+    document.getElementById('progressEta').textContent = tf('eta_completed', { t: formatDuration((Date.now() - progressState.startedAt) / 1000) });
   }
 }
 
@@ -478,12 +600,14 @@ function makeThumb(idx, suffix) {
 function ensureGalleryEmpty() {
   if (galleryEmptyEl) galleryEmptyEl.style.display = (galleryThumbs.length === 0) ? 'block' : 'none';
   var meta = document.getElementById('galleryMeta');
+  var withImg = galleryThumbs.filter(function(t){ return t.hasImage; });
   if (meta) {
-    var withImg = galleryThumbs.filter(function(t){ return t.hasImage; }).length;
-    meta.textContent = withImg + ' imágenes';
+    var anyVideo = withImg.some(function(t){ return t.isVideo; });
+    var key = (anyVideo || currentSettings.mode === 'video') ? 'gallery_count_video' : 'gallery_count_image';
+    meta.textContent = tf(key, { n: withImg.length });
   }
   var badge = document.getElementById('tabResultsBadge');
-  if (badge) badge.textContent = galleryThumbs.filter(function(t){ return t.hasImage; }).length;
+  if (badge) badge.textContent = withImg.length;
 }
 
 function clearGallery() {
@@ -673,8 +797,8 @@ function markPendingCancelled() {
   if (card) {
     var title = document.getElementById('progressTitle');
     var eta = document.getElementById('progressEta');
-    if (title) title.textContent = 'Detenido';
-    if (eta) eta.textContent = 'Refrescando Flow…';
+    if (title) title.textContent = t('prog_stopped_title');
+    if (eta) eta.textContent = t('prog_stopped_meta');
   }
 }
 
@@ -689,7 +813,7 @@ document.getElementById('fileInput').addEventListener('change', async function(e
   var lines = text.split('\n').map(function(l) { return l.trim(); }).filter(function(l) { return l.length > 0; });
   if (lines.length === 0) {
     addLog(t('log_empty'), '#f59e0b');
-    flashFileFeedback('Archivo vacío', false);
+    flashFileFeedback(t('log_empty'), false);
     e.target.value = '';
     return;
   }
@@ -759,7 +883,8 @@ var pasteCount = document.getElementById('pasteCount');
 function recountPasted() {
   if (!pasteArea || !pasteCount) return;
   var lines = pasteArea.value.split('\n').map(function(l){return l.trim();}).filter(function(l){return l.length > 0;});
-  pasteCount.textContent = lines.length + ' prompt' + (lines.length === 1 ? '' : 's');
+  var key = lines.length === 1 ? 'counter_singular' : 'counter_plural';
+  pasteCount.textContent = tf(key, { n: lines.length });
   pasteCount.classList.toggle('has', lines.length > 0);
 }
 if (pasteArea) {
@@ -769,8 +894,8 @@ if (pasteArea) {
 document.getElementById('btnLoadPasted').addEventListener('click', function() {
   if (!pasteArea) return;
   var lines = pasteArea.value.split('\n').map(function(l){return l.trim();}).filter(function(l){return l.length > 0;});
-  if (!lines.length) { addLog('Pega prompts antes de crear', '#f59e0b'); return; }
-  addLog(lines.length + ' prompts cargados', '#6366f1');
+  if (!lines.length) { addLog(t('log_paste_first'), '#f59e0b'); return; }
+  addLog(lines.length + ' ' + t('log_loaded_count'), '#6366f1');
   switchTab('resultados');
   sendToContent({ action: 'startReplay', prompts: lines, settings: currentSettings });
 });
