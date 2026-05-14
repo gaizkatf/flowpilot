@@ -30,6 +30,11 @@ var i18n = {
     lbl_gen_video: 'Vídeos por prompt',
     lbl_pause: 'Pausa entre prompts',
     lbl_enable: 'Extensión activa',
+    lbl_method: 'Método de envío',
+    method_api: 'Directo (rápido)',
+    method_sim: 'Simulado (más fiable)',
+    method_hint_api: 'Envía requests directos por API. Más rápido pero puede fallar si tu cuenta tiene baja reputación.',
+    method_hint_sim: 'Escribe el prompt en la caja de texto y pulsa "Crear" como un humano. Muestra banner amarillo de Chrome durante el batch. Más lento pero supera bloqueos reCAPTCHA.',
     // Live preview
     preview_head: 'Vas a crear con',
     preview_meta: 'Auto-descarga activa · pausa {n}s entre prompts',
@@ -114,6 +119,11 @@ var i18n = {
     lbl_gen_video: 'Videos per prompt',
     lbl_pause: 'Pause between prompts',
     lbl_enable: 'Extension active',
+    lbl_method: 'Send method',
+    method_api: 'Direct (fast)',
+    method_sim: 'Simulated (more reliable)',
+    method_hint_api: 'Sends API requests directly. Faster but may fail if your account has low reputation.',
+    method_hint_sim: 'Types prompt and clicks "Create" like a human. Shows Chrome’s yellow debugger banner during the batch. Slower but bypasses reCAPTCHA blocks.',
     preview_head: 'You will create with',
     preview_meta: 'Auto-download on · {n}s pause between prompts',
     paste_placeholder: 'Paste your prompts here, one per line...',
@@ -196,6 +206,7 @@ function applyLanguage() {
   // Refresh dynamic UI sections that build their own text
   if (typeof updateLivePreview === 'function') updateLivePreview();
   if (typeof recountPasted === 'function') recountPasted();
+  if (typeof updateMethodHint === 'function') updateMethodHint();
   ensureGalleryEmpty();
 }
 
@@ -215,7 +226,8 @@ var currentSettings = {
   delaySeconds: 20,
   aspectRatio: '16:9',
   videoSubMode: 'frames',
-  enabled: true
+  enabled: true,
+  method: 'api'
 };
 
 var imageModels = [
@@ -224,6 +236,7 @@ var imageModels = [
   { value: 'imagen_4', label: 'Imagen 4' }
 ];
 var videoModels = [
+  { value: 'veo_lite', label: 'Veo 3.1 Lite' },
   { value: 'veo_fast', label: 'Veo 3.1 Fast' },
   { value: 'veo_quality', label: 'Veo 3.1 Quality' }
 ];
@@ -234,6 +247,7 @@ var MODEL_LABELS = {
   nano_banana_pro: 'Nano Banana Pro',
   nano_banana_2: 'Nano Banana 2',
   imagen_4: 'Imagen 4',
+  veo_lite: 'Veo 3.1 Lite',
   veo_fast: 'Veo 3.1 Fast',
   veo_quality: 'Veo 3.1 Quality'
 };
@@ -377,7 +391,25 @@ function initControls() {
     sendToContent({ action: 'setEnabled', enabled: currentSettings.enabled });
   });
 
+  // Method segment (api / simulated)
+  var methodSeg = document.getElementById('methodSeg');
+  if (methodSeg) {
+    setSegValue(methodSeg, currentSettings.method || 'api');
+    setupSeg(methodSeg, function(val) {
+      currentSettings.method = val;
+      saveSettings(); sendSettings();
+      updateMethodHint();
+    });
+  }
+  updateMethodHint();
   updateLivePreview();
+}
+
+function updateMethodHint() {
+  var hintEl = document.getElementById('methodHint');
+  if (!hintEl) return;
+  var key = currentSettings.method === 'simulated' ? 'method_hint_sim' : 'method_hint_api';
+  hintEl.textContent = t(key);
 }
 
 function updateLivePreview() {

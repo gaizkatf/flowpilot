@@ -98,7 +98,21 @@
         });
       }
     } catch (e) {}
-    return origFetch.apply(this, arguments);
+    // Capture response too (for simulated mode — main.js needs the result body)
+    var promise = origFetch.apply(this, arguments);
+    try {
+      var urlForResp = (typeof input === 'string') ? input : (input && input.url);
+      if (urlForResp && looksLikeGeneration(urlForResp)) {
+        promise.then(function(r) {
+          try {
+            r.clone().text().then(function(txt) {
+              window.postMessage({ source: 'gf-flow-response', payload: { url: urlForResp, status: r.status, body: txt, ts: Date.now() } }, '*');
+            }).catch(function(){});
+          } catch (e) {}
+        }).catch(function(){});
+      }
+    } catch (e) {}
+    return promise;
   };
 
   // ===== Patch XHR =====

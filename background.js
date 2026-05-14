@@ -89,7 +89,19 @@ try {
   });
 } catch (e) {}
 
-// Allow sidepanel to trigger manual check
+// ===== CHROME DEBUGGER (trusted click) =====
+var attachedTabs = new Set();
+async function ensureAttached(tabId) {
+  if (attachedTabs.has(tabId)) return;
+  await chrome.debugger.attach({ tabId: tabId }, '1.3');
+  attachedTabs.add(tabId);
+}
+chrome.tabs.onRemoved.addListener(function(tabId) { attachedTabs.delete(tabId); });
+chrome.debugger.onDetach.addListener(function(source) {
+  if (source && source.tabId) attachedTabs.delete(source.tabId);
+});
+
+// Allow sidepanel to trigger manual check + content-script trusted events
 chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
   if (msg && msg.type === 'check_update') {
     checkLatestRelease().then(function() {
@@ -97,4 +109,35 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
     });
     return true;
   }
+  if (!msg || !msg.type || !sender.tab) return false;
+  var tabId = sender.tab.id;
+
+  if (msg.type === 'trusted_click') {
+    (async function() {
+      try {
+        await ensureAttached(tabId);
+        var target = { tabId: tabId };
+        await chrome.debugger.sendCommand(target, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x: msg.x, y: msg.y, button: 'none', buttons: 0 });
+        await chrome.debugger.sendCommand(target, 'Input.dispatchMouseEvent', { type: 'mousePressed', x: msg.x, y: msg.y, button: 'left', clickCount: 1, buttons: 1 });
+        await new Promise(function(r){ setTimeout(r, 40 + Math.random() * 70); });
+        await chrome.debugger.sendCommand(target, 'Input.dispatchMouseEvent', { type: 'mouseReleased', x: msg.x, y: msg.y, button: 'left', clickCount: 1, buttons: 0 });
+        sendResponse({ ok: true });
+      } catch (e) {
+        sendResponse({ ok: false, error: String(e && e.message || e) });
+      }
+    })();
+    return true;
+  }
+
+  if (msg.type === 'trusted_detach') {
+    (async function() {
+      if (attachedTabs.has(tabId)) {
+        try { await chrome.debugger.detach({ tabId: tabId }); } catch (e) {}
+        attachedTabs.delete(tabId);
+      }
+      sendResponse({ ok: true });
+    })();
+    return true;
+  }
+  return false;
 });

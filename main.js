@@ -831,7 +831,9 @@
   function videoModelKey(modelSetting, aspectRatio) {
     var portrait = aspectRatio === '9:16';
     var key;
-    if (modelSetting === 'veo_fast') {
+    if (modelSetting === 'veo_lite') {
+      key = portrait ? 'veo_3_1_t2v_lite_portrait' : 'veo_3_1_t2v_lite';
+    } else if (modelSetting === 'veo_fast') {
       key = portrait ? 'veo_3_1_t2v_fast_portrait' : 'veo_3_1_t2v_fast';
     } else { // veo_quality (default)
       key = portrait ? 'veo_3_1_t2v_portrait' : 'veo_3_1_t2v';
@@ -879,6 +881,64 @@
   }
 
   // Build body from settings (no template required)
+  // ===== TRUSTED CLICK (CDP via background) — used by Simulated mode =====
+  var _fpTrustedReqId = 0;
+  var _fpTrustedPending = {};
+  window.addEventListener('message', function(ev) {
+    if (!ev.data || ev.data.source !== 'gf-bridge') return;
+    var p = ev.data.payload;
+    if (!p || !p.reqId || !_fpTrustedPending[p.reqId]) return;
+    _fpTrustedPending[p.reqId](p.response || { ok: false, error: 'no_response' });
+    delete _fpTrustedPending[p.reqId];
+  });
+  function _fpTrustedSend(payload) {
+    return new Promise(function(resolve) {
+      var rid = ++_fpTrustedReqId;
+      _fpTrustedPending[rid] = resolve;
+      payload.reqId = rid;
+      window.postMessage({ source: 'gf-main', payload: payload }, '*');
+      setTimeout(function() {
+        if (_fpTrustedPending[rid]) {
+          _fpTrustedPending[rid]({ ok: false, error: 'timeout' });
+          delete _fpTrustedPending[rid];
+        }
+      }, 8000);
+    });
+  }
+  async function trustedClick(el) {
+    if (!el || !el.getBoundingClientRect) return { ok: false, error: 'no_element' };
+    try { el.scrollIntoView({ behavior: 'instant', block: 'center', inline: 'center' }); } catch (e) {}
+    await wait(150);
+    var rect = el.getBoundingClientRect();
+    var x = Math.round(rect.left + rect.width * (0.35 + Math.random() * 0.3));
+    var y = Math.round(rect.top + rect.height * (0.35 + Math.random() * 0.3));
+    return await _fpTrustedSend({ type: 'trusted_click', x: x, y: y });
+  }
+  async function trustedDetach() {
+    return await _fpTrustedSend({ type: 'trusted_detach' });
+  }
+
+  // ===== Response capture (simulated mode) =====
+  // capture.js fires 'gf-flow-response' messages after each generation fetch resolves.
+  // We store the latest result so simulated mode can pick it up after clicking "Crear".
+  var _fpLastFlowResponse = null;
+  window.addEventListener('message', function(ev) {
+    if (!ev.data || ev.data.source !== 'gf-flow-response') return;
+    var p = ev.data.payload;
+    if (!p) return;
+    _fpLastFlowResponse = p;
+  });
+  function _fpResetFlowResponse() { _fpLastFlowResponse = null; }
+  async function _fpWaitFlowResponse(timeoutMs) {
+    timeoutMs = timeoutMs || 25000;
+    var start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      if (_fpLastFlowResponse) return _fpLastFlowResponse;
+      await wait(300);
+    }
+    return null;
+  }
+
   function buildAutoBody(promptText, opts) {
     var sessionId = ';' + Date.now();
     var imageModel = MODEL_MAP[opts.model] || 'NARWHAL';
@@ -1004,6 +1064,33 @@
   }
 
   // Poll video generation status until completed or failed. Returns { ok, status }.
+  // ===== SIMULATED MODE — writes prompt + clicks "Crear" via CDP trusted click =====
+  // Lets Flow itself fire grecaptcha.execute inside its onClick context → higher reCAPTCHA score.
+  // Slower than API mode + shows yellow "FlowPilot is debugging" banner.
+  async function simulatedSendOne(promptText, isVideo) {
+    var editorDom = obtenerEditor();
+    if (!editorDom) return { ok: false, status: 0, text: 'editor_not_found' };
+
+    // Write prompt via Slate API (no clicks)
+    var wrote = await escribirPrompt(promptText);
+    if (!wrote) return { ok: false, status: 0, text: 'write_failed' };
+    await wait(500 + Math.random() * 600);
+
+    // Find "Crear" button
+    var btn = obtenerBotonEnviar();
+    if (!btn) return { ok: false, status: 0, text: 'crear_button_not_found' };
+
+    // Reset response slot before click; click triggers Flow's onClick → grecaptcha → fetch
+    _fpResetFlowResponse();
+    var cr = await trustedClick(btn);
+    if (!cr || !cr.ok) return { ok: false, status: 0, text: 'trusted_click_failed: ' + (cr && cr.error || '?') };
+
+    // Wait for response intercepted by capture.js
+    var resp = await _fpWaitFlowResponse(isVideo ? 35000 : 25000);
+    if (!resp) return { ok: false, status: 0, text: 'no_response_intercepted' };
+    return { ok: resp.status >= 200 && resp.status < 300, status: resp.status, text: resp.body || '' };
+  }
+
   async function pollVideoStatus(mediaId, projectId, accessToken, maxAttempts) {
     maxAttempts = maxAttempts || 120; // 120 × 5s = 10 min
     for (var attempt = 0; attempt < maxAttempts; attempt++) {
@@ -1187,6 +1274,7 @@
     nano_banana_pro: 'Nano Banana Pro',
     nano_banana_2: 'Nano Banana 2',
     imagen_4: 'Imagen 4',
+    veo_lite: 'Veo 3.1 Lite',
     veo_fast: 'Veo 3.1 Fast',
     veo_quality: 'Veo 3.1 Quality'
   };
@@ -1232,8 +1320,78 @@
       vlog('  → ' + humanModel + ' · ' + settings.aspectRatio + ' · ×' + (settings.generationCount || 1) + (isVideoMode ? ' · vídeo' : ''), '#6b7280');
 
       var r;
+      var useSimulated = settings.method === 'simulated';
+
+      // ===== SIMULATED branch (CDP click + Flow's own grecaptcha context) =====
+      if (useSimulated) {
+        r = await simulatedSendOne(raw, isVideoMode);
+        if (r.ok) {
+          try {
+            var simJson = JSON.parse(r.text || '{}');
+            if (isVideoMode) {
+              // Video simulated → start polling
+              var simMid = simJson && simJson.media && simJson.media[0] && simJson.media[0].name;
+              if (simMid) {
+                var simAccessToken = await getFlowAccessToken();
+                var simProjectId = getProjectIdFromUrl();
+                var simUrl = 'https://labs.google/fx/api/trpc/media.getMediaUrlRedirect?name=' + encodeURIComponent(simMid);
+                var simItem = { url: simUrl, prompt: raw, idx: i + 1, suffix: '', isVideo: true, mediaId: simMid, accessToken: simAccessToken, projectId: simProjectId };
+                generatedMedia.push(simItem);
+                ok++;
+                saveGenerated();
+                window.postMessage({ source: 'gf-main', payload: { type: 'images_ready', promptIndex: i + 1, prompt: raw, urls: [simUrl], isVideo: true } }, '*');
+                emitProgress();
+                pendingVideoPolls++;
+                (async function(it) {
+                  try {
+                    var st = await pollVideoStatus(it.mediaId, it.projectId, it.accessToken);
+                    if (!st.ok) {
+                      vlog('  ⏰ Vídeo "' + raw.substring(0,40) + '" no completado: ' + st.status, '#f59e0b');
+                      window.postMessage({ source: 'gf-main', payload: { type: 'media_failed', mediaId: it.mediaId } }, '*');
+                      return;
+                    }
+                    window.postMessage({ source: 'gf-main', payload: { type: 'media_ready', mediaId: it.mediaId, url: it.url, isVideo: true } }, '*');
+                    await wait(1500);
+                    var dlV = await descargarUnaImagen(it);
+                    if (dlV) { dlOk++; emitProgress(); }
+                  } finally { pendingVideoPolls--; }
+                })(simItem);
+              } else {
+                ok++;
+                emitProgress();
+              }
+            } else {
+              // Image simulated → extract URLs same as API mode
+              var simUrls = extractMediaUrls(simJson);
+              if (simUrls.length > 0) {
+                ok += simUrls.length;
+                var simItems = [];
+                for (var sui = 0; sui < simUrls.length; sui++) {
+                  var simIt = { url: simUrls[sui], prompt: raw, idx: i + 1, suffix: simUrls.length > 1 ? String.fromCharCode(97 + sui) : '' };
+                  generatedMedia.push(simIt);
+                  simItems.push(simIt);
+                }
+                saveGenerated();
+                window.postMessage({ source: 'gf-main', payload: { type: 'images_ready', promptIndex: i + 1, prompt: raw, urls: simUrls } }, '*');
+                emitProgress();
+                (async function(items) {
+                  await wait(2000);
+                  for (var ai = 0; ai < items.length; ai++) {
+                    var dlS = await descargarUnaImagen(items[ai]);
+                    if (dlS) { dlOk++; emitProgress(); }
+                    await wait(500);
+                  }
+                })(simItems);
+              } else {
+                ok++;
+                emitProgress();
+              }
+            }
+          } catch (e) { ok++; emitProgress(); }
+        }
+      }
       // ===== VIDEO branch =====
-      if (isVideoMode) {
+      else if (isVideoMode) {
         var videoCount = Math.max(1, parseInt(settings.generationCount, 10) || 1);
         var videoBatch = [];
         var allVideosOk = true;
@@ -1415,6 +1573,8 @@
       if (pendingVideoPolls > 0) vlog('⏰ ' + pendingVideoPolls + ' vídeos no completaron a tiempo. Refrescando igualmente.', '#f59e0b');
       else vlog('✅ Todos los vídeos completados', '#22c55e');
     }
+    // Detach CDP debugger (removes yellow banner) if simulated mode was used
+    try { await trustedDetach(); } catch (e) {}
     vlog('🔄 Refrescando Flow en 3s...', '#6b7280');
     setTimeout(function() { window.location.reload(); }, 3000);
   }
@@ -1597,7 +1757,7 @@
   });
 
   // === INIT ===
-  var GF_V = 'v0.10.1';
+  var GF_V = 'v0.11.0';
   var prevV = localStorage.getItem('gf_version');
   if (prevV !== GF_V) {
     localStorage.setItem('gf_version', GF_V);
