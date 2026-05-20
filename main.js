@@ -1124,20 +1124,77 @@
   // reCAPTCHA score = identical to manual click. Banner amarillo NUNCA aparece.
 
   // Walk up React fiber from send button until we find the component holding
-  // promptBoxStore + zero-arg onSubmit (confirmed L18 in current Flow build).
+  // promptBoxStore + zero-arg onSubmit. Multi-strategy in case Flow renames props.
+  // Returns { node, store, onSubmit } or null.
   function findPromptBoxFiberNode() {
     var btn = obtenerBotonEnviar();
     if (!btn) return null;
     var fk = Object.keys(btn).find(function(k){return k.startsWith('__reactFiber');});
     if (!fk) return null;
     var f = btn[fk];
-    while (f) {
-      var p = f.memoizedProps;
-      if (p && typeof p.onSubmit === 'function' && p.onSubmit.length === 0 && p.promptBoxStore) {
-        return f;
-      }
-      f = f.return;
+
+    function looksLikeStore(v) {
+      return v && typeof v === 'object' && typeof v.getState === 'function' && typeof v.subscribe === 'function';
     }
+    function findStoreInProps(p) {
+      if (!p) return null;
+      // Direct hits: known names + any prop that looks like a Zustand store
+      if (looksLikeStore(p.promptBoxStore)) return p.promptBoxStore;
+      var keys = Object.keys(p);
+      for (var i = 0; i < keys.length; i++) {
+        var v = p[keys[i]];
+        if (looksLikeStore(v)) {
+          // Verify the store exposes actions.setPrompt — otherwise wrong store
+          try {
+            var st = v.getState();
+            if (st && st.actions && typeof st.actions.setPrompt === 'function') return v;
+          } catch (e) {}
+        }
+      }
+      return null;
+    }
+
+    // Strategy 1: exact match (preferred) — zero-arg onSubmit + promptBoxStore prop
+    var node = f;
+    while (node) {
+      var p1 = node.memoizedProps;
+      if (p1 && typeof p1.onSubmit === 'function' && p1.onSubmit.length === 0 && p1.promptBoxStore) {
+        return { node: node, store: p1.promptBoxStore, onSubmit: p1.onSubmit };
+      }
+      node = node.return;
+    }
+
+    // Strategy 2: any zero-arg onSubmit + any prop that looks like the store
+    node = f;
+    while (node) {
+      var p2 = node.memoizedProps;
+      if (p2 && typeof p2.onSubmit === 'function' && p2.onSubmit.length === 0) {
+        var store2 = findStoreInProps(p2);
+        if (store2) return { node: node, store: store2, onSubmit: p2.onSubmit };
+      }
+      node = node.return;
+    }
+
+    // Strategy 3: find a node with the store; then look UPWARDS for zero-arg onSubmit nearby
+    node = f;
+    var fallbackStore = null;
+    while (node) {
+      var p3 = node.memoizedProps;
+      var s3 = findStoreInProps(p3);
+      if (s3) { fallbackStore = s3; break; }
+      node = node.return;
+    }
+    if (fallbackStore) {
+      var hunt = btn[fk];
+      while (hunt) {
+        var ph = hunt.memoizedProps;
+        if (ph && typeof ph.onSubmit === 'function' && ph.onSubmit.length === 0) {
+          return { node: hunt, store: fallbackStore, onSubmit: ph.onSubmit };
+        }
+        hunt = hunt.return;
+      }
+    }
+
     return null;
   }
 
@@ -1255,10 +1312,16 @@
   }
 
   async function pureSendOne(promptText, settings) {
-    var node = findPromptBoxFiberNode();
-    if (!node) return { ok: false, status: 0, text: 'fiber_node_not_found' };
-    var store = node.memoizedProps.promptBoxStore;
-    var onSubmit = node.memoizedProps.onSubmit;
+    // Retry up to 3 times in case Flow's React tree is still mounting
+    var found = null;
+    for (var attempt = 0; attempt < 3; attempt++) {
+      found = findPromptBoxFiberNode();
+      if (found) break;
+      await wait(800);
+    }
+    if (!found) return { ok: false, status: 0, text: 'fiber_node_not_found' };
+    var store = found.store;
+    var onSubmit = found.onSubmit;
     var state;
     try { state = store.getState(); } catch (e) { return { ok: false, status: 0, text: 'store_state_err: ' + e.message }; }
     var actions = state && state.actions;
@@ -1697,6 +1760,20 @@
     // Prevents account-aging 403 reCAPTCHA on long sessions (the "browser open too long" problem).
     var REFRESH_AFTER_N = 15;
     var okSinceReload = 0;
+    // Pre-batch check: if user picked "Más fiable" but Flow's React internals aren't available
+    // (UI variant, page not loaded, or Flow updated their bundle), silently fall back to "Rápido".
+    if (settings.method === 'simulated') {
+      var pureCheck = null;
+      for (var pca = 0; pca < 4; pca++) {
+        pureCheck = findPromptBoxFiberNode();
+        if (pureCheck) break;
+        await wait(1000);
+      }
+      if (!pureCheck) {
+        vlog('⚠️ Modo "Más fiable" no disponible en esta página de Flow. Usando "Rápido" para este batch.', '#f59e0b');
+        settings.method = 'api';
+      }
+    }
     // No warm-up needed in pure mode — no DOM events dispatched, so no fingerprint to mask.
     for (var i = 0; i < lista.length; i++) {
       if (STOP || !settings.enabled) {
@@ -2181,7 +2258,7 @@
   });
 
   // === INIT ===
-  var GF_V = 'v0.11.7';
+  var GF_V = 'v0.11.8';
   var prevV = localStorage.getItem('gf_version');
   if (prevV !== GF_V) {
     localStorage.setItem('gf_version', GF_V);
