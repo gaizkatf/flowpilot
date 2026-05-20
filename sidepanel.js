@@ -30,11 +30,12 @@ var i18n = {
     lbl_gen_video: 'Vídeos por prompt',
     lbl_pause: 'Pausa entre prompts',
     lbl_enable: 'Extensión activa',
+    lbl_duration: 'Duración',
     lbl_method: 'Método de envío',
-    method_api: 'Directo (rápido)',
-    method_sim: 'Simulado (más fiable)',
-    method_hint_api: 'Envía requests directos por API. Más rápido pero puede fallar si tu cuenta tiene baja reputación.',
-    method_hint_sim: 'Escribe el prompt en la caja de texto y pulsa "Crear" como un humano. Muestra banner amarillo de Chrome durante el batch. Más lento pero supera bloqueos reCAPTCHA.',
+    method_api: 'Rápido',
+    method_sim: 'Más fiable',
+    method_hint_api: 'Modo rápido. Crea cada imagen o vídeo en unos 2 segundos. A veces Google lo bloquea y hay que esperar un poco.',
+    method_hint_sim: 'Modo más fiable pero más lento (5-10 segundos por prompt). Úsalo si el modo rápido falla mucho.',
     // Live preview
     preview_head: 'Vas a crear con',
     preview_meta: 'Auto-descarga activa · pausa {n}s entre prompts',
@@ -119,11 +120,12 @@ var i18n = {
     lbl_gen_video: 'Videos per prompt',
     lbl_pause: 'Pause between prompts',
     lbl_enable: 'Extension active',
+    lbl_duration: 'Duration',
     lbl_method: 'Send method',
-    method_api: 'Direct (fast)',
-    method_sim: 'Simulated (more reliable)',
-    method_hint_api: 'Sends API requests directly. Faster but may fail if your account has low reputation.',
-    method_hint_sim: 'Types prompt and clicks "Create" like a human. Shows Chrome’s yellow debugger banner during the batch. Slower but bypasses reCAPTCHA blocks.',
+    method_api: 'Fast',
+    method_sim: 'Reliable',
+    method_hint_api: 'Fast mode. Creates each image or video in about 2 seconds. Google sometimes blocks it and you’ll need to wait a bit.',
+    method_hint_sim: 'More reliable but slower (5-10 seconds per prompt). Use it if Fast mode fails often.',
     preview_head: 'You will create with',
     preview_meta: 'Auto-download on · {n}s pause between prompts',
     paste_placeholder: 'Paste your prompts here, one per line...',
@@ -205,6 +207,7 @@ function applyLanguage() {
   refreshConnectionUI();
   // Refresh dynamic UI sections that build their own text
   if (typeof updateLivePreview === 'function') updateLivePreview();
+  if (typeof updateMethodHint === 'function') updateMethodHint();
   if (typeof recountPasted === 'function') recountPasted();
   ensureGalleryEmpty();
 }
@@ -225,6 +228,7 @@ var currentSettings = {
   delaySeconds: 20,
   aspectRatio: '16:9',
   videoSubMode: 'frames',
+  videoDuration: 8,
   enabled: true,
   method: 'api'
 };
@@ -235,6 +239,7 @@ var imageModels = [
   { value: 'imagen_4', label: 'Imagen 4' }
 ];
 var videoModels = [
+  { value: 'omni_flash', label: 'Omni Flash' },
   { value: 'veo_lite', label: 'Veo 3.1 Lite' },
   { value: 'veo_fast', label: 'Veo 3.1 Fast' },
   { value: 'veo_quality', label: 'Veo 3.1 Quality' }
@@ -246,6 +251,7 @@ var MODEL_LABELS = {
   nano_banana_pro: 'Nano Banana Pro',
   nano_banana_2: 'Nano Banana 2',
   imagen_4: 'Imagen 4',
+  omni_flash: 'Omni Flash',
   veo_lite: 'Veo 3.1 Lite',
   veo_fast: 'Veo 3.1 Fast',
   veo_quality: 'Veo 3.1 Quality'
@@ -270,6 +276,9 @@ var genSeg = document.getElementById('genSeg');
 var delaySl = document.getElementById('delaySl');
 var delayVal = document.getElementById('delayVal');
 var enabledTgl = document.getElementById('enabledTgl');
+var methodSeg = document.getElementById('methodSeg');
+var videoDurRow = document.getElementById('videoDurRow');
+var videoDurSeg = document.getElementById('videoDurSeg');
 var logDiv = document.getElementById('log');
 var statusDot = document.getElementById('statusDot');
 var connDot = document.getElementById('connDot');
@@ -336,6 +345,13 @@ function updateVideoSubVisibility() {
   videoSubRow.style.display = currentSettings.mode === 'video' ? '' : 'none';
 }
 
+function updateVideoDurVisibility() {
+  // Show only when Video mode + Omni Flash (it's the only model with selectable duration)
+  if (!videoDurRow) return;
+  var show = currentSettings.mode === 'video' && currentSettings.model === 'omni_flash';
+  videoDurRow.style.display = show ? '' : 'none';
+}
+
 function initControls() {
   setSegValue(modeSeg, currentSettings.mode);
   updateVideoSubVisibility();
@@ -344,6 +360,7 @@ function initControls() {
     updateVideoSubVisibility();
     rebuildModelSelect();
     rebuildRatios();
+    updateVideoDurVisibility();
     saveSettings(); sendSettings();
     applyModeLabels();
     updateLivePreview();
@@ -356,9 +373,18 @@ function initControls() {
     saveSettings(); sendSettings();
   });
 
+  // Video duration selector (Omni Flash only)
+  setSegValue(videoDurSeg, currentSettings.videoDuration || 8);
+  setupSeg(videoDurSeg, function(val) {
+    currentSettings.videoDuration = parseInt(val, 10);
+    saveSettings(); sendSettings();
+  });
+  updateVideoDurVisibility();
+
   rebuildModelSelect();
   modelSel.addEventListener('change', function() {
     currentSettings.model = modelSel.value;
+    updateVideoDurVisibility();
     saveSettings(); sendSettings();
     updateLivePreview();
   });
@@ -390,8 +416,22 @@ function initControls() {
     sendToContent({ action: 'setEnabled', enabled: currentSettings.enabled });
   });
 
-  // Method always API for now (simulated hidden, CDP fingerprint pending fix)
-  currentSettings.method = 'api';
+  // Method toggle: 'api' (fast, direct) or 'simulated' (stealth, page-native button).
+  // Default 'api' for users whose accounts pass reCAPTCHA. Switch to 'simulated' if 403 errors persist.
+  var validMethods = ['api', 'simulated'];
+  if (validMethods.indexOf(currentSettings.method) === -1) currentSettings.method = 'api';
+  setSegValue(methodSeg, currentSettings.method);
+  methodSeg.querySelectorAll('button').forEach(function(b) {
+    b.addEventListener('click', function() {
+      var val = b.getAttribute('data-val');
+      setSegValue(methodSeg, val);
+      currentSettings.method = val;
+      saveSettings();
+      updateMethodHint();
+      updateLivePreview();
+    });
+  });
+  updateMethodHint();
   saveSettings();
   updateLivePreview();
 }
@@ -718,9 +758,13 @@ function attachLoadHandlers(entry, url, isVideo) {
     vid.src = url;
     entry.wrap.appendChild(vid);
     entry.videoEl = vid;
-    // Play on hover
-    entry.wrap.addEventListener('mouseenter', function() { try { vid.play(); } catch(e) {} });
-    entry.wrap.addEventListener('mouseleave', function() { try { vid.pause(); vid.currentTime = 0; } catch(e) {} });
+    // Play on hover (play() returns a Promise that may reject — swallow it)
+    entry.wrap.addEventListener('mouseenter', function() {
+      try { var p = vid.play(); if (p && typeof p.catch === 'function') p.catch(function(){}); } catch(e) {}
+    });
+    entry.wrap.addEventListener('mouseleave', function() {
+      try { vid.pause(); vid.currentTime = 0; } catch(e) {}
+    });
   } else {
     entry.img.onload = function() {
       var detected = detectAspectRatio(this.naturalWidth, this.naturalHeight);
@@ -735,7 +779,7 @@ function attachLoadHandlers(entry, url, isVideo) {
   }
 }
 
-function fillThumbWithImage(idx, suffix, url, prompt, isVideo) {
+function fillThumbWithImage(idx, suffix, url, prompt, isVideo, isReady) {
   // Dedupe: skip if URL already shown (prevents duplicates after restoreGallery / reload)
   for (var d = 0; d < galleryThumbs.length; d++) {
     if (galleryThumbs[d].hasImage && galleryThumbs[d].url === url) return false;
@@ -749,10 +793,15 @@ function fillThumbWithImage(idx, suffix, url, prompt, isVideo) {
       entry.isVideo = !!isVideo;
       entry.wrap.title = '#' + idx + (prompt ? ' — ' + prompt.substring(0, 80) : '');
       if (isVideo) {
-        // Mark as "rendering" until poll completes; keep skeleton style but with badge
-        entry.wrap.classList.add('video-pending');
-        addVideoBadge(entry.wrap);
-        // Wait for media_ready event to attach <video>
+        if (isReady) {
+          // Pure mode: URL is mp4 (VIDEO type). Render <video> + VIDEO badge. Hover plays.
+          addVideoBadge(entry.wrap);
+          attachLoadHandlers(entry, url, true);
+        } else {
+          // API mode: keep pending until pollVideoStatus completes (markVideoReady fires)
+          entry.wrap.classList.add('video-pending');
+          addVideoBadge(entry.wrap);
+        }
       } else {
         attachLoadHandlers(entry, url, false);
       }
@@ -767,8 +816,13 @@ function fillThumbWithImage(idx, suffix, url, prompt, isVideo) {
   t.wrap.title = '#' + idx + (prompt ? ' — ' + prompt.substring(0, 80) : '');
   t.wrap.addEventListener('click', function() { window.open(url, '_blank'); });
   if (isVideo) {
-    t.wrap.classList.add('video-pending');
-    addVideoBadge(t.wrap);
+    if (isReady) {
+      addVideoBadge(t.wrap);
+      attachLoadHandlers(entry2, url, true);
+    } else {
+      t.wrap.classList.add('video-pending');
+      addVideoBadge(t.wrap);
+    }
   } else {
     attachLoadHandlers(entry2, url, false);
   }
@@ -811,11 +865,11 @@ function markVideoFailed(mediaId) {
   }
 }
 
-function addGalleryThumbs(idx, prompt, urls, isVideo) {
+function addGalleryThumbs(idx, prompt, urls, isVideo, isReady) {
   if (!urls || !urls.length) return;
   for (var i = 0; i < urls.length; i++) {
     var suffix = urls.length > 1 ? String.fromCharCode(97 + i) : '';
-    fillThumbWithImage(idx, suffix, urls[i], prompt, isVideo);
+    fillThumbWithImage(idx, suffix, urls[i], prompt, isVideo, isReady);
   }
   galleryEl.scrollTop = galleryEl.scrollHeight;
 }
@@ -831,7 +885,7 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
     addLog(t('log_complete'), '#10b981');
     hideProgress();
   } else if (msg.type === 'images_ready') {
-    addGalleryThumbs(msg.promptIndex, msg.prompt, msg.urls || [], !!msg.isVideo);
+    addGalleryThumbs(msg.promptIndex, msg.prompt, msg.urls || [], !!msg.isVideo, !!msg.isReady);
   } else if (msg.type === 'media_ready') {
     markVideoReady(msg.mediaId, msg.url);
   } else if (msg.type === 'media_failed') {

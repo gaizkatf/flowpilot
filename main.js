@@ -828,10 +828,15 @@
     '3:4': 'IMAGE_ASPECT_RATIO_TALL'
   };
   // Video model key resolver (TurboFlow reverse-engineered)
-  function videoModelKey(modelSetting, aspectRatio) {
+  function videoModelKey(modelSetting, aspectRatio, duration) {
     var portrait = aspectRatio === '9:16';
     var key;
-    if (modelSetting === 'veo_lite') {
+    if (modelSetting === 'omni_flash') {
+      // Omni Flash key includes duration: abra_t2v_<N>s (verified from real request).
+      var dur = parseInt(duration, 10);
+      if ([4, 6, 8, 10].indexOf(dur) === -1) dur = 8;
+      key = portrait ? 'abra_t2v_' + dur + 's_portrait' : 'abra_t2v_' + dur + 's';
+    } else if (modelSetting === 'veo_lite') {
       key = portrait ? 'veo_3_1_t2v_lite_portrait' : 'veo_3_1_t2v_lite';
     } else if (modelSetting === 'veo_fast') {
       key = portrait ? 'veo_3_1_t2v_fast_portrait' : 'veo_3_1_t2v_fast';
@@ -963,8 +968,9 @@
   var _fpLastMousePos = { x: Math.floor((typeof window !== 'undefined' ? window.innerWidth : 800) / 2), y: Math.floor((typeof window !== 'undefined' ? window.innerHeight : 600) / 2) };
 
   // ===== Response capture (simulated mode) =====
-  // capture.js fires 'gf-flow-response' messages after each generation fetch resolves.
+  // background.js (CDP Network.responseReceived) forwards generation responses → bridge.js → 'gf-flow-response'.
   // We store the latest result so simulated mode can pick it up after clicking "Crear".
+  // Passive capture (no fetch/XHR wrapping) → reCAPTCHA can't fingerprint the extension.
   var _fpLastFlowResponse = null;
   window.addEventListener('message', function(ev) {
     if (!ev.data || ev.data.source !== 'gf-flow-response') return;
@@ -1057,15 +1063,18 @@
     var sessionId = ';' + Date.now() + Math.floor(Math.random() * 1000);
     var portrait = opts.aspectRatio === '9:16';
     var aspectEnum = portrait ? 'VIDEO_ASPECT_RATIO_PORTRAIT' : 'VIDEO_ASPECT_RATIO_LANDSCAPE';
-    var modelKey = videoModelKey(opts.model, opts.aspectRatio);
+    var modelKey = videoModelKey(opts.model, opts.aspectRatio, opts.videoDuration);
+    var isOmni = opts.model === 'omni_flash';
+    var mgCtx = { batchId: uuid4() };
+    if (isOmni) mgCtx.audioFailurePreference = 'BLOCK_SILENCED_VIDEOS';
     return {
-      mediaGenerationContext: { batchId: uuid4() },
+      mediaGenerationContext: mgCtx,
       clientContext: {
         projectId: opts.projectId,
         tool: 'PINHOLE',
         recaptchaContext: { applicationType: 'RECAPTCHA_APPLICATION_TYPE_WEB', token: 'PLACEHOLDER' },
         sessionId: sessionId,
-        userPaygateTier: 'PAYGATE_TIER_NOT_PAID'
+        userPaygateTier: 'PAYGATE_TIER_ONE'
       },
       requests: [{
         aspectRatio: aspectEnum,
@@ -1090,6 +1099,7 @@
     var body = buildVideoBody(promptText, {
       model: opts.model,
       aspectRatio: opts.aspectRatio,
+      videoDuration: opts.videoDuration,
       projectId: projectId
     });
     body.clientContext.recaptchaContext.token = rcToken;
@@ -1108,6 +1118,271 @@
   }
 
   // Poll video generation status until completed or failed. Returns { ok, status }.
+  // ===== PURE MODE — call Flow's native React handlers directly =====
+  // No DOM events, no CDP, no Bearer/recaptcha extraction in extension code.
+  // Flow's own React handler reads from its store + calls its bundled grecaptcha + fetch.
+  // reCAPTCHA score = identical to manual click. Banner amarillo NUNCA aparece.
+
+  // Walk up React fiber from send button until we find the component holding
+  // promptBoxStore + zero-arg onSubmit (confirmed L18 in current Flow build).
+  function findPromptBoxFiberNode() {
+    var btn = obtenerBotonEnviar();
+    if (!btn) return null;
+    var fk = Object.keys(btn).find(function(k){return k.startsWith('__reactFiber');});
+    if (!fk) return null;
+    var f = btn[fk];
+    while (f) {
+      var p = f.memoizedProps;
+      if (p && typeof p.onSubmit === 'function' && p.onSubmit.length === 0 && p.promptBoxStore) {
+        return f;
+      }
+      f = f.return;
+    }
+    return null;
+  }
+
+  // FlowPilot model id → Flow internal family id
+  var IMAGE_MODEL_MAP_PURE = {
+    nano_banana_pro: 'nano_banana_pro',
+    nano_banana_2: 'narwhal_display',
+    imagen_4: 'imagen_4'
+  };
+  var VIDEO_MODEL_MAP_PURE = {
+    omni_flash: 'abra',
+    veo_lite: 'veo_3_1_lite',
+    veo_fast: 'veo_3_1_fast',
+    veo_quality: 'veo_3_1_quality'
+  };
+  var ASPECT_MAP_PURE = {
+    '16:9': 'LANDSCAPE',
+    '9:16': 'PORTRAIT',
+    '1:1': 'SQUARE',
+    '4:3': 'LANDSCAPE',
+    '3:4': 'PORTRAIT'
+  };
+
+  // Watch DOM for new media URLs appearing after onSubmit fires.
+  // Diff against pre-submit snapshot so existing thumbnails don't count.
+  function captureNewMediaUrls(timeoutMs, expectedCount, isVideo, existingSnapshot) {
+    return new Promise(function(resolve) {
+      var captured = {};
+      var found = [];
+      var settleTimer = null;
+      // Skip common UI assets (icons, avatars, logos) — they're tiny and not generation output.
+      var SKIP_RE = /\.(svg|ico)(\?|$)|\/icons?\/|\/logo|\/avatar|\/profile|sprite/i;
+      function isCandidateUrl(u) {
+        if (!u) return false;
+        if (existingSnapshot && existingSnapshot[u]) return false;
+        if (captured[u]) return false;
+        // Must be http(s) or blob URL pointing to media
+        if (!/^(https?:|blob:)/.test(u)) return false;
+        if (SKIP_RE.test(u)) return false;
+        // Data URLs are tiny placeholders — skip
+        if (u.startsWith('data:')) return false;
+        return true;
+      }
+      // Flow renders video thumbs as <img> with getMediaUrlRedirect URL (type=THUMBNAIL).
+      // For video: accept IMG with redirect-pattern URLs; transform later to strip THUMBNAIL.
+      // For image: only IMG/SOURCE.
+      var allowedTags = isVideo ? { IMG: 1, SOURCE: 1, VIDEO: 1 } : { IMG: 1, SOURCE: 1 };
+      function transformVideoUrl(u) {
+        // Swap THUMBNAIL → VIDEO so redirect resolves to mp4 (playable in <video>).
+        return u.replace(/mediaUrlType=MEDIA_URL_TYPE_THUMBNAIL/g, 'mediaUrlType=MEDIA_URL_TYPE_VIDEO');
+      }
+      // Dedupe key for video: UUID from name=<UUID> (poster+video share same UUID).
+      // For image: full URL.
+      function dedupeKey(u) {
+        if (!isVideo) return u;
+        var m = u.match(/[?&]name=([a-f0-9-]{36})/i);
+        return m ? m[1] : u;
+      }
+      function consider(el) {
+        if (!el || el.nodeType !== 1) return;
+        if (!allowedTags[el.tagName]) return;
+        var srcs = [];
+        if (el.src) srcs.push(el.src);
+        if (el.currentSrc) srcs.push(el.currentSrc);
+        var srcAttr = el.getAttribute && el.getAttribute('src');
+        if (srcAttr) srcs.push(srcAttr);
+        var srcset = el.getAttribute && el.getAttribute('srcset');
+        if (srcset) srcset.split(',').forEach(function(s){ var u = (s.split(' ')[0] || '').trim(); if (u) srcs.push(u); });
+        for (var i = 0; i < srcs.length; i++) {
+          var u = srcs[i];
+          if (!isCandidateUrl(u)) continue;
+          if (isVideo) {
+            // Only accept Flow's redirect URLs (skip random page images like avatars, icons)
+            if (u.indexOf('getMediaUrlRedirect') === -1) continue;
+            u = transformVideoUrl(u);
+          }
+          var key = dedupeKey(u);
+          if (captured[key]) continue;
+          captured[key] = true;
+          found.push(u);
+        }
+        if (found.length >= expectedCount) {
+          if (settleTimer) clearTimeout(settleTimer);
+          settleTimer = setTimeout(function() {
+            try { observer.disconnect(); } catch (e) {}
+            resolve(found);
+          }, 700);
+        }
+      }
+      var observerSelector = isVideo ? 'video, source' : 'img, source';
+      var observer = new MutationObserver(function(muts) {
+        for (var i = 0; i < muts.length; i++) {
+          var m = muts[i];
+          if (m.type === 'attributes' && m.target) consider(m.target);
+          if (m.addedNodes) {
+            for (var j = 0; j < m.addedNodes.length; j++) {
+              var n = m.addedNodes[j];
+              if (n.nodeType !== 1) continue;
+              consider(n);
+              if (n.querySelectorAll) {
+                n.querySelectorAll(observerSelector).forEach(consider);
+              }
+            }
+          }
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['src','srcset'] });
+      // Initial scan: if media appeared instantly between snapshot + observer attach
+      try { document.querySelectorAll(observerSelector).forEach(consider); } catch (e) {}
+      setTimeout(function() {
+        try { observer.disconnect(); } catch (e) {}
+        resolve(found);
+      }, timeoutMs);
+    });
+  }
+
+  async function pureSendOne(promptText, settings) {
+    var node = findPromptBoxFiberNode();
+    if (!node) return { ok: false, status: 0, text: 'fiber_node_not_found' };
+    var store = node.memoizedProps.promptBoxStore;
+    var onSubmit = node.memoizedProps.onSubmit;
+    var state;
+    try { state = store.getState(); } catch (e) { return { ok: false, status: 0, text: 'store_state_err: ' + e.message }; }
+    var actions = state && state.actions;
+    if (!actions || typeof actions.setPrompt !== 'function') return { ok: false, status: 0, text: 'actions_missing' };
+
+    var isVideo = settings.mode === 'video';
+    // Flow accepts: IMAGE, VIDEO_FRAMES (text-to-video), VIDEO_REFERENCES (with ingredients).
+    // Bare 'VIDEO' is invalid — submit silently bails.
+    var desiredMode;
+    if (isVideo) {
+      desiredMode = settings.videoSubMode === 'ingredients' ? 'VIDEO_REFERENCES' : 'VIDEO_FRAMES';
+    } else {
+      desiredMode = 'IMAGE';
+    }
+    var currentMode = state.mode;
+
+    // 1. setMode FIRST (has cascading side-effects: resets model picker, ratio defaults, etc.)
+    if (currentMode !== desiredMode) {
+      try { actions.setMode(desiredMode); } catch (e) {}
+      await wait(500); // let side-effects settle
+    }
+
+    // 2. Model
+    if (isVideo) {
+      var vid = VIDEO_MODEL_MAP_PURE[settings.model] || settings.model || 'veo_3_1_fast';
+      try { actions.setVideoModelFamily(vid); } catch (e) {}
+      // Omni Flash supports selectable duration (4/6/8/10s). Other models ignore this.
+      if (settings.model === 'omni_flash' && typeof actions.setSelectedVideoDuration === 'function') {
+        var dur = parseInt(settings.videoDuration, 10) || 8;
+        try { actions.setSelectedVideoDuration(dur); } catch (e) {}
+      }
+    } else {
+      var imgFam = IMAGE_MODEL_MAP_PURE[settings.model] || settings.model || 'nano_banana_pro';
+      try { actions.setImageModelFamily(imgFam); } catch (e) {}
+    }
+    await wait(120);
+
+    // 3. Outputs per prompt
+    try { actions.setOutputsPerPrompt(Math.max(1, parseInt(settings.generationCount, 10) || 1)); } catch (e) {}
+    await wait(80);
+
+    // 4. Aspect ratio LAST (simple setter — won't be overwritten by anything below)
+    try { actions.setAspectRatio(ASPECT_MAP_PURE[settings.aspectRatio] || 'LANDSCAPE'); } catch (e) {}
+    await wait(80);
+
+    // 5. Prompt LAST so it survives any cascading clears from mode/model changes
+    try { actions.clearPrompt(); } catch (e) {}
+    await wait(80);
+    try { actions.setPrompt(promptText); } catch (e) { return { ok: false, status: 0, text: 'setPrompt_err: ' + e.message }; }
+    await wait(250);
+
+    // Snapshot existing media URLs so the capture observer ignores them
+    var existing = {};
+    try {
+      document.querySelectorAll('img, video, source').forEach(function(el) {
+        var src = el.src || el.currentSrc || el.getAttribute('src') || '';
+        if (src) existing[src] = true;
+      });
+    } catch (e) {}
+
+    // Fire native submit (this calls Flow's own grecaptcha + fetch — same path as manual)
+    try {
+      onSubmit();
+    } catch (e) {
+      return { ok: false, status: 0, text: 'submit_err: ' + e.message };
+    }
+
+    // Wait for new media URLs in DOM
+    var expectedCount = Math.max(1, parseInt(settings.generationCount, 10) || 1);
+    var timeoutMs = isVideo ? 120000 : 45000;
+    var urls = await captureNewMediaUrls(timeoutMs, expectedCount, isVideo, existing);
+
+    if (!urls || urls.length === 0) {
+      return { ok: false, status: 0, text: 'no_media_captured (timeout o request bloqueado por reCAPTCHA)' };
+    }
+    // Synth a response-shaped object compatible with extractMediaUrls()
+    var stamp = Date.now();
+    var fakeResp = {
+      workflows: urls.map(function(u, i) { return { metadata: { primaryMediaId: '__pure_' + stamp + '_' + i } }; }),
+      media: urls.map(function(u, i) { return { name: '__pure_' + stamp + '_' + i, image: { generatedImage: { fifeUrl: u } } }; })
+    };
+    return { ok: true, status: 200, text: JSON.stringify(fakeResp) };
+  }
+
+  // ===== WARM-UP — build behavioral signal before first prompt =====
+  // reCAPTCHA Enterprise scores based on pre-action interaction history.
+  // Random mouse moves + small scroll + focus events → page looks "lived in" before we automate.
+  async function warmupBehavior() {
+    try {
+      var W = window.innerWidth || 1200;
+      var H = window.innerHeight || 800;
+      // Move mouse from a sensible starting point
+      var startX = Math.round(W * (0.3 + Math.random() * 0.4));
+      var startY = Math.round(H * (0.3 + Math.random() * 0.4));
+      _fpLastMousePos = { x: startX, y: startY };
+      await trustedMouseMove(startX, startY);
+      await wait(200 + Math.random() * 300);
+      // 4-6 random mouse moves across the page with realistic dwell
+      var moves = 4 + Math.floor(Math.random() * 3);
+      for (var i = 0; i < moves; i++) {
+        if (STOP) return;
+        var tx = Math.round(W * (0.15 + Math.random() * 0.7));
+        var ty = Math.round(H * (0.15 + Math.random() * 0.7));
+        await trustedMousePath(tx, ty);
+        await wait(250 + Math.random() * 600);
+      }
+      // Tiny scroll up and back down (user-like exploration)
+      try {
+        window.scrollBy({ top: 60 + Math.random() * 80, left: 0, behavior: 'smooth' });
+        await wait(400 + Math.random() * 400);
+        window.scrollBy({ top: -(40 + Math.random() * 60), left: 0, behavior: 'smooth' });
+        await wait(400 + Math.random() * 400);
+      } catch (e) {}
+      // Focus events on body so reCAPTCHA sees window engagement
+      try {
+        window.focus();
+        document.body && document.body.focus && document.body.focus();
+      } catch (e) {}
+      await wait(300 + Math.random() * 500);
+    } catch (e) {
+      vlog('  ⚠️ warmup falló: ' + e.message, '#f59e0b');
+    }
+  }
+
   // ===== SIMULATED MODE — full human-like interaction (mouse path + click + type + click) =====
   // Mouse curves + trusted clicks + real key events via CDP → reCAPTCHA sees realistic behavior.
   // Slower (~10-15s per prompt) but bypasses behavioral scoring.
@@ -1203,7 +1478,7 @@
     var cr = await trustedClickAt(btnX, btnY);
     if (!cr || !cr.ok) return { ok: false, status: 0, text: 'trusted_click_failed: ' + (cr && cr.error || '?') };
 
-    // === STEP 7: await intercepted response from capture.js ===
+    // === STEP 7: await intercepted response from CDP Network (passive) ===
     var resp = await _fpWaitFlowResponse(isVideo ? 35000 : 25000);
     if (!resp) return { ok: false, status: 0, text: 'no_response_intercepted' };
     return { ok: resp.status >= 200 && resp.status < 300, status: resp.status, text: resp.body || '' };
@@ -1392,6 +1667,7 @@
     nano_banana_pro: 'Nano Banana Pro',
     nano_banana_2: 'Nano Banana 2',
     imagen_4: 'Imagen 4',
+    omni_flash: 'Omni Flash',
     veo_lite: 'Veo 3.1 Lite',
     veo_fast: 'Veo 3.1 Fast',
     veo_quality: 'Veo 3.1 Quality'
@@ -1417,6 +1693,11 @@
         payload: { type: 'progress', gen: ok, dl: dlOk, fail: fail }
       }, '*');
     }
+    // Proactive refresh: reload Flow every N OK prompts to clear grecaptcha widget + DOM + sockets.
+    // Prevents account-aging 403 reCAPTCHA on long sessions (the "browser open too long" problem).
+    var REFRESH_AFTER_N = 15;
+    var okSinceReload = 0;
+    // No warm-up needed in pure mode — no DOM events dispatched, so no fingerprint to mask.
     for (var i = 0; i < lista.length; i++) {
       if (STOP || !settings.enabled) {
         vlog('⛔ Detenido', '#ef4444');
@@ -1444,40 +1725,35 @@
       var r;
       var useSimulated = settings.method === 'simulated';
 
-      // ===== SIMULATED branch (CDP click + Flow's own grecaptcha context) =====
+      // ===== SIMULATED branch (Pure React store + native onSubmit, NO CDP, NO banner) =====
       if (useSimulated) {
-        r = await simulatedSendOne(raw, isVideoMode);
+        r = await pureSendOne(raw, settings);
         if (r.ok) {
           try {
             var simJson = JSON.parse(r.text || '{}');
             if (isVideoMode) {
-              // Video simulated → start polling
-              var simMid = simJson && simJson.media && simJson.media[0] && simJson.media[0].name;
-              if (simMid) {
-                var simAccessToken = await getFlowAccessToken();
-                var simProjectId = getProjectIdFromUrl();
-                var simUrl = 'https://labs.google/fx/api/trpc/media.getMediaUrlRedirect?name=' + encodeURIComponent(simMid);
-                var simItem = { url: simUrl, prompt: raw, idx: i + 1, suffix: '', isVideo: true, mediaId: simMid, accessToken: simAccessToken, projectId: simProjectId };
-                generatedMedia.push(simItem);
-                ok++;
+              // Video PURE — MutationObserver already captured URLs after Flow rendered them.
+              // The captured URL is the final playable video — skip pollVideoStatus (no real mediaId).
+              var simVideoUrls = extractMediaUrls(simJson);
+              if (simVideoUrls.length > 0) {
+                ok += simVideoUrls.length;
+                var simVideoItems = [];
+                for (var svi = 0; svi < simVideoUrls.length; svi++) {
+                  var svIt = { url: simVideoUrls[svi], prompt: raw, idx: i + 1, suffix: simVideoUrls.length > 1 ? String.fromCharCode(97 + svi) : '', isVideo: true };
+                  generatedMedia.push(svIt);
+                  simVideoItems.push(svIt);
+                }
                 saveGenerated();
-                window.postMessage({ source: 'gf-main', payload: { type: 'images_ready', promptIndex: i + 1, prompt: raw, urls: [simUrl], isVideo: true } }, '*');
+                window.postMessage({ source: 'gf-main', payload: { type: 'images_ready', promptIndex: i + 1, prompt: raw, urls: simVideoUrls, isVideo: true, isReady: true } }, '*');
                 emitProgress();
-                pendingVideoPolls++;
-                (async function(it) {
-                  try {
-                    var st = await pollVideoStatus(it.mediaId, it.projectId, it.accessToken);
-                    if (!st.ok) {
-                      vlog('  ⏰ Vídeo "' + raw.substring(0,40) + '" no completado: ' + st.status, '#f59e0b');
-                      window.postMessage({ source: 'gf-main', payload: { type: 'media_failed', mediaId: it.mediaId } }, '*');
-                      return;
-                    }
-                    window.postMessage({ source: 'gf-main', payload: { type: 'media_ready', mediaId: it.mediaId, url: it.url, isVideo: true } }, '*');
-                    await wait(1500);
-                    var dlV = await descargarUnaImagen(it);
+                (async function(items) {
+                  await wait(2000);
+                  for (var ai = 0; ai < items.length; ai++) {
+                    var dlV = await descargarUnaImagen(items[ai]);
                     if (dlV) { dlOk++; emitProgress(); }
-                  } finally { pendingVideoPolls--; }
-                })(simItem);
+                    await wait(500);
+                  }
+                })(simVideoItems);
               } else {
                 ok++;
                 emitProgress();
@@ -1631,7 +1907,7 @@
         var isRecaptcha = /reCAPTCHA|recaptcha/i.test(errText);
         var isDailyQuota = /DAILY_QUOTA_REACHED|daily.*quota|GENERATION_LIMIT/i.test(errText);
         var isThrottled = /USER_REQUESTS_THROTTLED|throttle/i.test(errText);
-        // Daily quota → no point retrying, hard stop
+        // Daily quota → no point retrying, hard stop. (Error 253 is transient, handled at page load.)
         if (r.status === 429 && isDailyQuota) {
           vlog('🚫 Límite diario alcanzado. Espera 24h para que se reinicie o cambia a otra cuenta.', '#ef4444');
           localStorage.removeItem('fp_auto_resume');
@@ -1668,6 +1944,26 @@
           vlog('⏳ Rate limit. Esperando ' + backoffSec + 's antes de continuar...', '#f59e0b');
           await wait(backoffSec * 1000);
         }
+      }
+      if (r.ok) okSinceReload++;
+      // Proactive refresh: clear stale grecaptcha widget / DOM / TCP sockets every N OK prompts.
+      // Triggers full Flow reload + resume via fp_auto_resume mechanism.
+      if (okSinceReload >= REFRESH_AFTER_N && i < lista.length - 1) {
+        var remainingProactive = lista.slice(i + 1);
+        vlog('🔄 Refresco proactivo tras ' + okSinceReload + ' OK consecutivos (limpia grecaptcha + DOM + sockets)...', '#3b82f6');
+        try {
+          localStorage.setItem('fp_auto_resume', JSON.stringify({
+            prompts: remainingProactive,
+            settings: settings,
+            ts: Date.now()
+          }));
+        } catch (e) {}
+        // Do NOT touch fp_resume_retries — this is proactive, not failure
+        ejecutando = false;
+        window.postMessage({ source: 'gf-main', payload: { type: 'batch_cancelled' } }, '*');
+        try { await trustedDetach(); } catch (e) {}
+        setTimeout(function() { window.location.reload(); }, 1500);
+        return;
       }
       if (i < lista.length - 1) {
         var baseMs = settings.delaySeconds * 1000;
@@ -1858,7 +2154,7 @@
       vlog('📂 ' + lines.length + ' prompts cargados', '#3b82f6');
       var pid = getProjectIdFromUrl();
       if (!pid) { vlog('⚠️ Abre un proyecto Flow primero (URL debe contener /project/...)', '#f59e0b'); return; }
-      var MODEL_LABEL = { nano_banana_pro: 'Nano Banana Pro', nano_banana_2: 'Nano Banana 2', imagen_4: 'Imagen 4', veo_fast: 'Veo 3.1 Fast', veo_quality: 'Veo 3.1 Quality' };
+      var MODEL_LABEL = { nano_banana_pro: 'Nano Banana Pro', nano_banana_2: 'Nano Banana 2', imagen_4: 'Imagen 4', omni_flash: 'Omni Flash', veo_lite: 'Veo 3.1 Lite', veo_fast: 'Veo 3.1 Fast', veo_quality: 'Veo 3.1 Quality' };
       var modelLbl = MODEL_LABEL[settings.model] || settings.model;
       vlog('⚙️ ' + modelLbl + ' | ' + settings.aspectRatio + ' | x' + settings.generationCount, '#7c5cfc');
       prompts = lines; indiceActual = 0;
@@ -1885,7 +2181,7 @@
   });
 
   // === INIT ===
-  var GF_V = 'v0.11.6';
+  var GF_V = 'v0.11.7';
   var prevV = localStorage.getItem('gf_version');
   if (prevV !== GF_V) {
     localStorage.setItem('gf_version', GF_V);
@@ -1896,6 +2192,21 @@
   }
   vlog('🚀 FlowPilot ' + GF_V + ' conectado', '#7c5cfc');
   window.postMessage({ source: 'gf-main', payload: { type: 'ready' } }, '*');
+
+  // ===== DETECT FX 253 RATE-LIMIT PAGE (transient) =====
+  // Google sometimes serves a raw HTML "exceeds the quota limit. Error code 253" page
+  // mid-batch as a burst rate-limit (NOT daily cap). Recovers in seconds.
+  // Strategy: wait 30s + reload page again (do NOT abort resume — let normal flow recover).
+  try {
+    var bodyTxt = (document.body && document.body.textContent) || '';
+    var bodyLen = bodyTxt.length;
+    var has253 = /The number of requests sent exceeds the quota limit/i.test(bodyTxt) && /Error code 253/i.test(bodyTxt);
+    if (has253 && bodyLen < 500) {
+      vlog('⏳ Google FX devolvió rate-limit 253 (transitorio). Esperando 30s + reload...', '#f59e0b');
+      setTimeout(function() { window.location.reload(); }, 30000);
+      return; // skip auto-resume this load — next reload should hit normal Flow
+    }
+  } catch (e) {}
 
   // ===== AUTO-RESUME after reload =====
   // If a previous batch was interrupted by auth/recaptcha failure, resume automatically.

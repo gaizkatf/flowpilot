@@ -576,6 +576,16 @@
         </div>
       </div>
 
+      <div class="row" id="videoDurRow" style="display:none">
+        <div class="row-label" data-i18n="lbl_duration">Duración</div>
+        <div class="seg" id="videoDurSeg">
+          <button data-val="4">4s</button>
+          <button data-val="6">6s</button>
+          <button class="on" data-val="8">8s</button>
+          <button data-val="10">10s</button>
+        </div>
+      </div>
+
       <div class="row">
         <div class="row-label" data-i18n="lbl_model">Modelo</div>
         <div class="sel-wrap">
@@ -606,6 +616,15 @@
           <span class="slider-val" id="delayVal">20s</span>
         </div>
       </div>
+
+      <div class="row">
+        <div class="row-label" data-i18n="lbl_method">Método de envío</div>
+        <div class="seg" id="methodSeg">
+          <button class="on" data-val="api" data-i18n="method_api">Directo (rápido)</button>
+          <button data-val="simulated" data-i18n="method_sim">Simulado (más fiable)</button>
+        </div>
+      </div>
+      <div id="methodHint" style="font-size:11px; color:#9ca3af; padding:0 4px 8px 4px; line-height:1.4;"></div>
 
       <div class="toggle-row">
         <span class="toggle-label" data-i18n="lbl_enable">Extensión activa</span>
