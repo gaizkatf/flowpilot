@@ -1258,34 +1258,30 @@
 
   // Watch DOM for new media URLs appearing after onSubmit fires.
   // Diff against pre-submit snapshot so existing thumbnails don't count.
-  function captureNewMediaUrls(timeoutMs, expectedCount, isVideo, existingSnapshot) {
+  function captureNewMediaUrls(timeoutMs, expectedCount, isVideo, snapshot) {
     return new Promise(function(resolve) {
       var captured = {};
       var found = [];
       var settleTimer = null;
-      // Skip common UI assets (icons, avatars, logos) — they're tiny and not generation output.
+      // snapshot = { urlMap: {url: true}, elSet: WeakSet of existing IMG/VIDEO/SOURCE elements,
+      //              keySet: {dedupeKey: true} of media UUIDs already in DOM }
+      var existingUrls = (snapshot && snapshot.urlMap) || {};
+      var existingEls = (snapshot && snapshot.elSet) || null;
+      var existingKeys = (snapshot && snapshot.keySet) || {};
       var SKIP_RE = /\.(svg|ico)(\?|$)|\/icons?\/|\/logo|\/avatar|\/profile|sprite/i;
       function isCandidateUrl(u) {
         if (!u) return false;
-        if (existingSnapshot && existingSnapshot[u]) return false;
+        if (existingUrls[u]) return false;
         if (captured[u]) return false;
-        // Must be http(s) or blob URL pointing to media
         if (!/^(https?:|blob:)/.test(u)) return false;
         if (SKIP_RE.test(u)) return false;
-        // Data URLs are tiny placeholders — skip
         if (u.startsWith('data:')) return false;
         return true;
       }
-      // Flow renders video thumbs as <img> with getMediaUrlRedirect URL (type=THUMBNAIL).
-      // For video: accept IMG with redirect-pattern URLs; transform later to strip THUMBNAIL.
-      // For image: only IMG/SOURCE.
       var allowedTags = isVideo ? { IMG: 1, SOURCE: 1, VIDEO: 1 } : { IMG: 1, SOURCE: 1 };
       function transformVideoUrl(u) {
-        // Swap THUMBNAIL → VIDEO so redirect resolves to mp4 (playable in <video>).
         return u.replace(/mediaUrlType=MEDIA_URL_TYPE_THUMBNAIL/g, 'mediaUrlType=MEDIA_URL_TYPE_VIDEO');
       }
-      // Dedupe key for video: UUID from name=<UUID> (poster+video share same UUID).
-      // For image: full URL.
       function dedupeKey(u) {
         if (!isVideo) return u;
         var m = u.match(/[?&]name=([a-f0-9-]{36})/i);
@@ -1294,6 +1290,10 @@
       function consider(el) {
         if (!el || el.nodeType !== 1) return;
         if (!allowedTags[el.tagName]) return;
+        // Critical: reject pre-existing elements (their src may change late from
+        // delayed earlier prompts). Only NEW elements are valid for this prompt.
+        if (existingEls && existingEls.has(el)) return;
+        if (found.length >= expectedCount) return; // hard cap
         var srcs = [];
         if (el.src) srcs.push(el.src);
         if (el.currentSrc) srcs.push(el.currentSrc);
@@ -1305,21 +1305,22 @@
           var u = srcs[i];
           if (!isCandidateUrl(u)) continue;
           if (isVideo) {
-            // Only accept Flow's redirect URLs (skip random page images like avatars, icons)
             if (u.indexOf('getMediaUrlRedirect') === -1) continue;
             u = transformVideoUrl(u);
           }
           var key = dedupeKey(u);
+          if (existingKeys[key]) continue; // UUID already present at snapshot time
           if (captured[key]) continue;
           captured[key] = true;
           found.push(u);
+          if (found.length >= expectedCount) break;
         }
         if (found.length >= expectedCount) {
           if (settleTimer) clearTimeout(settleTimer);
           settleTimer = setTimeout(function() {
             try { observer.disconnect(); } catch (e) {}
-            resolve(found);
-          }, 700);
+            resolve(found.slice(0, expectedCount));
+          }, 500);
         }
       }
       var observerSelector = isVideo ? 'video, source' : 'img, source';
@@ -1344,7 +1345,7 @@
       try { document.querySelectorAll(observerSelector).forEach(consider); } catch (e) {}
       setTimeout(function() {
         try { observer.disconnect(); } catch (e) {}
-        resolve(found);
+        resolve(found.slice(0, expectedCount));
       }, timeoutMs);
     });
   }
@@ -1411,12 +1412,21 @@
     try { actions.setPrompt(promptText); } catch (e) { return { ok: false, status: 0, text: 'setPrompt_err: ' + e.message }; }
     await wait(250);
 
-    // Snapshot existing media URLs so the capture observer ignores them
-    var existing = {};
+    // Snapshot existing media elements + URLs + UUIDs so the capture observer can
+    // reject anything that already exists — even if a delayed previous prompt updates
+    // its IMG.src late, the IMG element itself is in elSet and gets rejected.
+    var snapshotUrlMap = {};
+    var snapshotElSet = (typeof WeakSet === 'function') ? new WeakSet() : null;
+    var snapshotKeySet = {};
     try {
       document.querySelectorAll('img, video, source').forEach(function(el) {
-        var src = el.src || el.currentSrc || el.getAttribute('src') || '';
-        if (src) existing[src] = true;
+        if (snapshotElSet) snapshotElSet.add(el);
+        var s = el.src || el.currentSrc || el.getAttribute('src') || '';
+        if (s) {
+          snapshotUrlMap[s] = true;
+          var m = s.match(/[?&]name=([a-f0-9-]{36})/i);
+          if (m) snapshotKeySet[m[1]] = true;
+        }
       });
     } catch (e) {}
 
@@ -1430,7 +1440,9 @@
     // Wait for new media URLs in DOM
     var expectedCount = Math.max(1, parseInt(settings.generationCount, 10) || 1);
     var timeoutMs = isVideo ? 120000 : 45000;
-    var urls = await captureNewMediaUrls(timeoutMs, expectedCount, isVideo, existing);
+    var urls = await captureNewMediaUrls(timeoutMs, expectedCount, isVideo, {
+      urlMap: snapshotUrlMap, elSet: snapshotElSet, keySet: snapshotKeySet
+    });
 
     if (!urls || urls.length === 0) {
       return { ok: false, status: 0, text: 'no_media_captured (timeout o request bloqueado por reCAPTCHA)' };
@@ -2301,7 +2313,7 @@
   });
 
   // === INIT ===
-  var GF_V = 'v0.11.9';
+  var GF_V = 'v0.11.10';
   var prevV = localStorage.getItem('gf_version');
   if (prevV !== GF_V) {
     localStorage.setItem('gf_version', GF_V);
