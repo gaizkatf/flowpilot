@@ -1123,76 +1123,114 @@
   // Flow's own React handler reads from its store + calls its bundled grecaptcha + fetch.
   // reCAPTCHA score = identical to manual click. Banner amarillo NUNCA aparece.
 
-  // Walk up React fiber from send button until we find the component holding
-  // promptBoxStore + zero-arg onSubmit. Multi-strategy in case Flow renames props.
+  // Find React fiber node holding Flow's promptBox store + zero-arg onSubmit.
+  // Tries five strategies, last one scans the WHOLE React tree.
   // Returns { node, store, onSubmit } or null.
   function findPromptBoxFiberNode() {
-    var btn = obtenerBotonEnviar();
-    if (!btn) return null;
-    var fk = Object.keys(btn).find(function(k){return k.startsWith('__reactFiber');});
-    if (!fk) return null;
-    var f = btn[fk];
-
     function looksLikeStore(v) {
       return v && typeof v === 'object' && typeof v.getState === 'function' && typeof v.subscribe === 'function';
     }
+    function storeHasPromptActions(v) {
+      if (!looksLikeStore(v)) return false;
+      try {
+        var st = v.getState();
+        return !!(st && st.actions && typeof st.actions.setPrompt === 'function');
+      } catch (e) { return false; }
+    }
     function findStoreInProps(p) {
       if (!p) return null;
-      // Direct hits: known names + any prop that looks like a Zustand store
-      if (looksLikeStore(p.promptBoxStore)) return p.promptBoxStore;
+      if (storeHasPromptActions(p.promptBoxStore)) return p.promptBoxStore;
       var keys = Object.keys(p);
       for (var i = 0; i < keys.length; i++) {
-        var v = p[keys[i]];
-        if (looksLikeStore(v)) {
-          // Verify the store exposes actions.setPrompt — otherwise wrong store
-          try {
-            var st = v.getState();
-            if (st && st.actions && typeof st.actions.setPrompt === 'function') return v;
-          } catch (e) {}
-        }
+        if (storeHasPromptActions(p[keys[i]])) return p[keys[i]];
       }
       return null;
     }
 
-    // Strategy 1: exact match (preferred) — zero-arg onSubmit + promptBoxStore prop
-    var node = f;
-    while (node) {
-      var p1 = node.memoizedProps;
-      if (p1 && typeof p1.onSubmit === 'function' && p1.onSubmit.length === 0 && p1.promptBoxStore) {
-        return { node: node, store: p1.promptBoxStore, onSubmit: p1.onSubmit };
-      }
-      node = node.return;
-    }
+    var btn = obtenerBotonEnviar();
+    var fk = btn && Object.keys(btn).find(function(k){return k.startsWith('__reactFiber');});
+    var fStart = (btn && fk) ? btn[fk] : null;
 
-    // Strategy 2: any zero-arg onSubmit + any prop that looks like the store
-    node = f;
-    while (node) {
-      var p2 = node.memoizedProps;
-      if (p2 && typeof p2.onSubmit === 'function' && p2.onSubmit.length === 0) {
-        var store2 = findStoreInProps(p2);
-        if (store2) return { node: node, store: store2, onSubmit: p2.onSubmit };
-      }
-      node = node.return;
-    }
-
-    // Strategy 3: find a node with the store; then look UPWARDS for zero-arg onSubmit nearby
-    node = f;
-    var fallbackStore = null;
-    while (node) {
-      var p3 = node.memoizedProps;
-      var s3 = findStoreInProps(p3);
-      if (s3) { fallbackStore = s3; break; }
-      node = node.return;
-    }
-    if (fallbackStore) {
-      var hunt = btn[fk];
-      while (hunt) {
-        var ph = hunt.memoizedProps;
-        if (ph && typeof ph.onSubmit === 'function' && ph.onSubmit.length === 0) {
-          return { node: hunt, store: fallbackStore, onSubmit: ph.onSubmit };
+    // Strategies 1-3: walk UP from send button (fast path)
+    if (fStart) {
+      // S1: exact match
+      var node = fStart;
+      while (node) {
+        var p1 = node.memoizedProps;
+        if (p1 && typeof p1.onSubmit === 'function' && p1.onSubmit.length === 0 && p1.promptBoxStore) {
+          return { node: node, store: p1.promptBoxStore, onSubmit: p1.onSubmit };
         }
-        hunt = hunt.return;
+        node = node.return;
       }
+      // S2: zero-arg onSubmit + any store-like prop
+      node = fStart;
+      while (node) {
+        var p2 = node.memoizedProps;
+        if (p2 && typeof p2.onSubmit === 'function' && p2.onSubmit.length === 0) {
+          var s2 = findStoreInProps(p2);
+          if (s2) return { node: node, store: s2, onSubmit: p2.onSubmit };
+        }
+        node = node.return;
+      }
+      // S3: find store anywhere upwards, then nearest zero-arg onSubmit
+      node = fStart;
+      var fallbackStore = null;
+      while (node) {
+        var s3 = findStoreInProps(node.memoizedProps);
+        if (s3) { fallbackStore = s3; break; }
+        node = node.return;
+      }
+      if (fallbackStore) {
+        var hunt = fStart;
+        while (hunt) {
+          var ph = hunt.memoizedProps;
+          if (ph && typeof ph.onSubmit === 'function' && ph.onSubmit.length === 0) {
+            return { node: hunt, store: fallbackStore, onSubmit: ph.onSubmit };
+          }
+          hunt = hunt.return;
+        }
+      }
+    }
+
+    // Strategy 4-5: scan the whole React tree from root.
+    var root = document.querySelector('#__next') || document.body;
+    var rk = root && Object.keys(root).find(function(k){return k.startsWith('__reactContainer');});
+    if (!rk) return null;
+    var container = root[rk];
+    var rootFiber = container && container.stateNode && container.stateNode.current;
+    if (!rootFiber) return null;
+
+    var globalStore = null;
+    var candidateOnSubmits = []; // {node, onSubmit}
+    function scan(f, depth) {
+      if (!f || depth > 200) return;
+      var p = f.memoizedProps;
+      if (p) {
+        // Collect store candidates
+        if (!globalStore) {
+          var sFound = findStoreInProps(p);
+          if (sFound) globalStore = sFound;
+        }
+        // Collect zero-arg onSubmit candidates
+        if (typeof p.onSubmit === 'function' && p.onSubmit.length === 0) {
+          candidateOnSubmits.push({ node: f, onSubmit: p.onSubmit, hasStore: !!findStoreInProps(p) });
+        }
+      }
+      if (f.child) scan(f.child, depth + 1);
+      if (f.sibling) scan(f.sibling, depth + 1);
+    }
+    scan(rootFiber, 0);
+
+    if (!globalStore) return null;
+    // S4: prefer the onSubmit whose own props include the store (closest binding)
+    for (var i = 0; i < candidateOnSubmits.length; i++) {
+      if (candidateOnSubmits[i].hasStore) {
+        return { node: candidateOnSubmits[i].node, store: globalStore, onSubmit: candidateOnSubmits[i].onSubmit };
+      }
+    }
+    // S5: any zero-arg onSubmit (paired with the store we found)
+    if (candidateOnSubmits.length > 0) {
+      return { node: candidateOnSubmits[0].node, store: globalStore, onSubmit: candidateOnSubmits[0].onSubmit };
     }
 
     return null;
@@ -1760,19 +1798,24 @@
     // Prevents account-aging 403 reCAPTCHA on long sessions (the "browser open too long" problem).
     var REFRESH_AFTER_N = 15;
     var okSinceReload = 0;
-    // Pre-batch check: if user picked "Más fiable" but Flow's React internals aren't available
-    // (UI variant, page not loaded, or Flow updated their bundle), silently fall back to "Rápido".
+    // Pre-batch check for "Más fiable": wait until Flow's React tree exposes the
+    // promptBoxStore. Page may take 20-30s on slow connections. Abort batch with a
+    // clear message if it never appears — do NOT fall back to "Rápido" (user prefs).
     if (settings.method === 'simulated') {
       var pureCheck = null;
-      for (var pca = 0; pca < 4; pca++) {
+      for (var pca = 0; pca < 30; pca++) {
         pureCheck = findPromptBoxFiberNode();
         if (pureCheck) break;
+        if (pca === 5) vlog('⏳ Esperando a que Flow termine de cargar (modo Más fiable)...', '#3b82f6');
         await wait(1000);
       }
       if (!pureCheck) {
-        vlog('⚠️ Modo "Más fiable" no disponible en esta página de Flow. Usando "Rápido" para este batch.', '#f59e0b');
-        settings.method = 'api';
+        vlog('🚫 No se pudo enganchar al editor de Flow tras 30s. Recarga la pestaña de Flow y vuelve a intentarlo.', '#ef4444');
+        ejecutando = false;
+        window.postMessage({ source: 'gf-main', payload: { type: 'batch_cancelled' } }, '*');
+        return;
       }
+      vlog('✅ Modo "Más fiable" listo', '#22c55e');
     }
     // No warm-up needed in pure mode — no DOM events dispatched, so no fingerprint to mask.
     for (var i = 0; i < lista.length; i++) {
@@ -2258,7 +2301,7 @@
   });
 
   // === INIT ===
-  var GF_V = 'v0.11.8';
+  var GF_V = 'v0.11.9';
   var prevV = localStorage.getItem('gf_version');
   if (prevV !== GF_V) {
     localStorage.setItem('gf_version', GF_V);
