@@ -1094,15 +1094,26 @@
     }
   }
 
-  // Build video request body (text-to-video)
+  // Build video request body. With a character reference, Flow uses reference-to-video:
+  // the videoModelKey switches from *_t2v_* to *_r2v_* and referenceEntities is added.
   function buildVideoBody(promptText, opts) {
     var sessionId = ';' + Date.now() + Math.floor(Math.random() * 1000);
     var portrait = opts.aspectRatio === '9:16';
     var aspectEnum = portrait ? 'VIDEO_ASPECT_RATIO_PORTRAIT' : 'VIDEO_ASPECT_RATIO_LANDSCAPE';
     var modelKey = videoModelKey(opts.model, opts.aspectRatio, opts.videoDuration);
+    var hasCharacter = !!opts.characterId;
+    if (hasCharacter) modelKey = modelKey.replace('_t2v_', '_r2v_').replace('_t2v', '_r2v');
     var isOmni = opts.model === 'omni_flash';
     var mgCtx = { batchId: uuid4() };
     if (isOmni) mgCtx.audioFailurePreference = 'BLOCK_SILENCED_VIDEOS';
+    var req = {
+      aspectRatio: aspectEnum,
+      seed: Math.floor(Math.random() * 1000000),
+      metadata: {},
+      textInput: { structuredPrompt: { parts: [{ text: promptText }] } },
+      videoModelKey: modelKey
+    };
+    if (hasCharacter) req.referenceEntities = [{ entityId: opts.characterId }];
     return {
       mediaGenerationContext: mgCtx,
       clientContext: {
@@ -1112,13 +1123,7 @@
         sessionId: sessionId,
         userPaygateTier: 'PAYGATE_TIER_ONE'
       },
-      requests: [{
-        aspectRatio: aspectEnum,
-        seed: Math.floor(Math.random() * 1000000),
-        metadata: {},
-        textInput: { structuredPrompt: { parts: [{ text: promptText }] } },
-        videoModelKey: modelKey
-      }],
+      requests: [req],
       useV2ModelConfig: true
     };
   }
@@ -1136,10 +1141,14 @@
       model: opts.model,
       aspectRatio: opts.aspectRatio,
       videoDuration: opts.videoDuration,
-      projectId: projectId
+      projectId: projectId,
+      characterId: opts.characterId
     });
     body.clientContext.recaptchaContext.token = rcToken;
-    var url = 'https://aisandbox-pa.googleapis.com/v1/video:batchAsyncGenerateVideoText';
+    // With a character reference Flow uses a different endpoint (reference-to-video).
+    var url = opts.characterId
+      ? 'https://aisandbox-pa.googleapis.com/v1/video:batchAsyncGenerateVideoReferenceImages'
+      : 'https://aisandbox-pa.googleapis.com/v1/video:batchAsyncGenerateVideoText';
     try {
       var resp = await fetch(url, {
         method: 'POST',
@@ -1548,10 +1557,12 @@
 
     var isVideo = settings.mode === 'video';
     // Flow accepts: IMAGE, VIDEO_FRAMES (text-to-video), VIDEO_REFERENCES (with ingredients).
-    // Bare 'VIDEO' is invalid — submit silently bails.
+    // Bare 'VIDEO' is invalid — submit silently bails. A character is a reference ingredient,
+    // so video + character must use VIDEO_REFERENCES (reference-to-video).
     var desiredMode;
     if (isVideo) {
-      desiredMode = settings.videoSubMode === 'ingredients' ? 'VIDEO_REFERENCES' : 'VIDEO_FRAMES';
+      if (settings.characterId || settings.videoSubMode === 'ingredients') desiredMode = 'VIDEO_REFERENCES';
+      else desiredMode = 'VIDEO_FRAMES';
     } else {
       desiredMode = 'IMAGE';
     }
@@ -1592,8 +1603,9 @@
     try { actions.setPrompt(promptText); } catch (e) { return { ok: false, status: 0, text: 'setPrompt_err: ' + e.message }; }
     await wait(250);
 
-    // 6. Character reference (consistency). Re-applied every prompt — Flow drops it after each gen.
-    if (!isVideo && settings.characterId) {
+    // 6. Character reference (consistency). Works for images and video (reference-to-video).
+    // Re-applied every prompt — Flow drops it after each gen.
+    if (settings.characterId) {
       applyCharacterPure(store, settings.characterId);
       await wait(150);
     }
@@ -2574,7 +2586,7 @@
       var MODEL_LABEL = { nano_banana_pro: 'Nano Banana Pro', nano_banana_2: 'Nano Banana 2', nano_banana_2_lite: 'Nano Banana 2 Lite', omni_flash: 'Omni Flash', veo_lite: 'Veo 3.1 Lite', veo_fast: 'Veo 3.1 Fast', veo_quality: 'Veo 3.1 Quality' };
       var modelLbl = MODEL_LABEL[settings.model] || settings.model;
       vlog('⚙️ ' + modelLbl + ' | ' + settings.aspectRatio + ' | x' + settings.generationCount, '#7c5cfc');
-      if (settings.mode === 'image' && settings.characterId) {
+      if (settings.characterId) {
         vlog('🎭 Personaje: ' + (settings.characterName || settings.characterId), '#a855f7');
       }
       prompts = lines; indiceActual = 0;
@@ -2604,7 +2616,7 @@
   });
 
   // === INIT ===
-  var GF_V = 'v0.12.0';
+  var GF_V = 'v0.12.1';
   var prevV = localStorage.getItem('gf_version');
   if (prevV !== GF_V) {
     localStorage.setItem('gf_version', GF_V);

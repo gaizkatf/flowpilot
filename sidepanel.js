@@ -116,7 +116,7 @@ var i18n = {
     log_complete: 'Ejecución completada',
     log_paste_first: 'Pega prompts antes de crear',
     log_loaded_count: 'prompts cargados',
-    tutorial: '<h3>Cómo usar</h3><div class="item"><p><b>1.</b> Abre Google Flow y entra en un proyecto.</p></div><div class="item"><p><b>2.</b> En la pestaña <b>Crear</b>, configura modelo, formato y nº por prompt.</p></div><div class="item"><p><b>3.</b> Pega tus prompts (uno por línea) o carga un archivo .txt.</p></div><div class="item"><p><b>4.</b> Pulsa <b>Crear imágenes/vídeos</b>. Verás el progreso en tiempo real.</p></div><div class="item"><p><b>5.</b> En <b>Resultados</b> aparecerán las imágenes/vídeos mientras se generan, con auto-descarga.</p></div><h3>Personaje (consistencia)</h3><div class="item"><p><b>1.</b> Crea un personaje dentro de Flow (sección Characters).</p></div><div class="item"><p><b>2.</b> En Configuración pulsa <b>🔄 Cargar personajes</b> y elígelo en el desplegable.</p></div><div class="item"><p><b>3.</b> Todas las imágenes del lote mantendrán ese personaje. Solo aplica a imágenes.</p></div><h3>Carpeta de descarga</h3><div class="item"><p>Por defecto se guarda en <b>Descargas</b>. Pulsa <b>📁 Elegir carpeta</b> para guardar en otra. El navegador pedirá permiso 1 vez al empezar cada lote.</p></div><h3>Método de envío</h3><div class="item"><p><b>Rápido:</b> más veloz (~2s), pero a veces Google lo bloquea.</p></div><div class="item"><p><b>Más fiable:</b> más lento pero supera bloqueos. Úsalo si el rápido falla mucho.</p></div><h3>Ajustes</h3><div class="item"><p><b>Pausa entre prompts:</b> espera entre cada generación. Sube a 30-60s para batches grandes.</p></div><div class="item"><p><b>Detener:</b> en la pestaña Estado, para cualquier ejecución en curso.</p></div>'
+    tutorial: '<h3>Cómo usar</h3><div class="item"><p><b>1.</b> Abre Google Flow y entra en un proyecto.</p></div><div class="item"><p><b>2.</b> En la pestaña <b>Crear</b>, configura modelo, formato y nº por prompt.</p></div><div class="item"><p><b>3.</b> Pega tus prompts (uno por línea) o carga un archivo .txt.</p></div><div class="item"><p><b>4.</b> Pulsa <b>Crear imágenes/vídeos</b>. Verás el progreso en tiempo real.</p></div><div class="item"><p><b>5.</b> En <b>Resultados</b> aparecerán las imágenes/vídeos mientras se generan, con auto-descarga.</p></div><h3>Personaje (consistencia)</h3><div class="item"><p><b>1.</b> Crea un personaje dentro de Flow (sección Characters).</p></div><div class="item"><p><b>2.</b> En Configuración pulsa <b>🔄 Cargar personajes</b> y elígelo en el desplegable.</p></div><div class="item"><p><b>3.</b> Todo el lote mantendrá ese personaje. Funciona en imagen y vídeo.</p></div><h3>Carpeta de descarga</h3><div class="item"><p>Por defecto se guarda en <b>Descargas</b>. Pulsa <b>📁 Elegir carpeta</b> para guardar en otra. El navegador pedirá permiso 1 vez al empezar cada lote.</p></div><h3>Método de envío</h3><div class="item"><p><b>Rápido:</b> más veloz (~2s), pero a veces Google lo bloquea.</p></div><div class="item"><p><b>Más fiable:</b> más lento pero supera bloqueos. Úsalo si el rápido falla mucho.</p></div><h3>Ajustes</h3><div class="item"><p><b>Pausa entre prompts:</b> espera entre cada generación. Sube a 30-60s para batches grandes.</p></div><div class="item"><p><b>Detener:</b> en la pestaña Estado, para cualquier ejecución en curso.</p></div>'
   },
   en: {
     status_connected: 'Flow detected',
@@ -219,7 +219,7 @@ var i18n = {
     log_complete: 'Run complete',
     log_paste_first: 'Paste prompts before creating',
     log_loaded_count: 'prompts loaded',
-    tutorial: '<h3>How to use</h3><div class="item"><p><b>1.</b> Open Google Flow and enter a project.</p></div><div class="item"><p><b>2.</b> In the <b>Create</b> tab, set model, format and number per prompt.</p></div><div class="item"><p><b>3.</b> Paste your prompts (one per line) or load a .txt file.</p></div><div class="item"><p><b>4.</b> Click <b>Create images/videos</b>. You will see live progress.</p></div><div class="item"><p><b>5.</b> In <b>Results</b> images/videos will appear as they are generated, auto-downloaded.</p></div><h3>Character (consistency)</h3><div class="item"><p><b>1.</b> Create a character inside Flow (Characters section).</p></div><div class="item"><p><b>2.</b> In Settings click <b>🔄 Load characters</b> and pick it from the dropdown.</p></div><div class="item"><p><b>3.</b> Every image in the batch keeps that character. Images only.</p></div><h3>Download folder</h3><div class="item"><p>Defaults to <b>Downloads</b>. Click <b>📁 Choose folder</b> to save elsewhere. The browser asks for permission once at each batch.</p></div><h3>Send method</h3><div class="item"><p><b>Fast:</b> quicker (~2s), but Google may block it sometimes.</p></div><div class="item"><p><b>Reliable:</b> slower but bypasses blocks. Use it if Fast fails often.</p></div><h3>Settings</h3><div class="item"><p><b>Pause between prompts:</b> wait between generations. Raise to 30-60s for large batches.</p></div><div class="item"><p><b>Stop:</b> in the Status tab, halts any running execution.</p></div>'
+    tutorial: '<h3>How to use</h3><div class="item"><p><b>1.</b> Open Google Flow and enter a project.</p></div><div class="item"><p><b>2.</b> In the <b>Create</b> tab, set model, format and number per prompt.</p></div><div class="item"><p><b>3.</b> Paste your prompts (one per line) or load a .txt file.</p></div><div class="item"><p><b>4.</b> Click <b>Create images/videos</b>. You will see live progress.</p></div><div class="item"><p><b>5.</b> In <b>Results</b> images/videos will appear as they are generated, auto-downloaded.</p></div><h3>Character (consistency)</h3><div class="item"><p><b>1.</b> Create a character inside Flow (Characters section).</p></div><div class="item"><p><b>2.</b> In Settings click <b>🔄 Load characters</b> and pick it from the dropdown.</p></div><div class="item"><p><b>3.</b> The whole batch keeps that character. Works for image and video.</p></div><h3>Download folder</h3><div class="item"><p>Defaults to <b>Downloads</b>. Click <b>📁 Choose folder</b> to save elsewhere. The browser asks for permission once at each batch.</p></div><h3>Send method</h3><div class="item"><p><b>Fast:</b> quicker (~2s), but Google may block it sometimes.</p></div><div class="item"><p><b>Reliable:</b> slower but bypasses blocks. Use it if Fast fails often.</p></div><h3>Settings</h3><div class="item"><p><b>Pause between prompts:</b> wait between generations. Raise to 30-60s for large batches.</p></div><div class="item"><p><b>Stop:</b> in the Status tab, halts any running execution.</p></div>'
   }
 };
 
@@ -420,8 +420,8 @@ function saveCharacters() {
 
 function updateCharVisibility() {
   if (!charRow) return;
-  // Characters apply to image generation only.
-  charRow.style.display = currentSettings.mode === 'image' ? '' : 'none';
+  // Characters apply to both image and video (reference-to-video) generation.
+  charRow.style.display = '';
 }
 
 function renderCharThumb() {
@@ -713,8 +713,8 @@ function updateLivePreview() {
   var lpMeta = document.getElementById('lpMeta');
   var modelLbl = MODEL_LABELS[currentSettings.model] || currentSettings.model;
   var body = modelLbl + ' · ' + currentSettings.aspectRatio + ' · ×' + currentSettings.generationCount;
-  // Surface the selected character so the user sees it will be applied.
-  if (currentSettings.mode === 'image' && currentSettings.characterId && currentSettings.characterName) {
+  // Surface the selected character so the user sees it will be applied (image + video).
+  if (currentSettings.characterId && currentSettings.characterName) {
     body += ' · 🎭 ' + currentSettings.characterName;
   }
   if (lpBody) lpBody.textContent = body;
@@ -1309,9 +1309,16 @@ document.getElementById('btnLoadPasted').addEventListener('click', async functio
   var lines = pasteArea.value.split('\n').map(function(l){return l.trim();}).filter(function(l){return l.length > 0;});
   if (!lines.length) { addLog(t('log_paste_first'), '#f59e0b'); return; }
   // If a custom folder is set, (re)confirm write permission now — this click is the user
-  // gesture Chrome requires. If denied/lost, fall back to Downloads for this batch.
+  // gesture Chrome requires. If denied/lost/hangs, fall back to Downloads. Never let this
+  // block the batch from starting (a hung permission request must not freeze the button).
   if (folderHandle) {
-    var ok = await ensureFolderPermission(true);
+    var ok = false;
+    try {
+      ok = await Promise.race([
+        ensureFolderPermission(true),
+        new Promise(function(res){ setTimeout(function(){ res(false); }, 4000); })
+      ]);
+    } catch (e) { ok = false; }
     currentSettings.useCustomFolder = ok;
     if (!ok) addLog(t('folder_denied'), '#f59e0b');
     saveSettings(); sendSettings();
