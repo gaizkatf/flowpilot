@@ -31,6 +31,28 @@ var i18n = {
     lbl_pause: 'Pausa entre prompts',
     lbl_enable: 'Extensión activa',
     lbl_duration: 'Duración',
+    lbl_character: 'Personaje',
+    btn_load_chars: '🔄 Cargar personajes',
+    char_none: 'Ninguno',
+    char_loading: 'Buscando personajes...',
+    char_none_found: 'No se encontraron personajes',
+    char_need_flow: 'Abre Flow y entra en un proyecto para cargar personajes',
+    char_fallback_name: 'Personaje',
+    folder_save_failed: 'No pude guardar en la carpeta',
+    grp_create: 'Creación',
+    grp_run: 'Ejecución',
+    grp_output: 'Salida',
+    grp_run_ctl: 'Ejecución',
+    grp_downloads: 'Descargas y exportar',
+    grp_maint: 'Mantenimiento',
+    pill_new: 'Nuevo',
+    lbl_folder: 'Carpeta de descarga',
+    btn_pick_folder: '📁 Elegir carpeta',
+    btn_clear_folder: '✕',
+    folder_default: 'Descargas (por defecto)',
+    folder_current: 'Guardando en: {name} · se pedirá permiso al empezar cada lote',
+    folder_denied: 'Permiso de carpeta denegado. Se usará Descargas.',
+    folder_unsupported: 'Tu navegador no permite elegir carpeta. Se usará Descargas.',
     lbl_method: 'Método de envío',
     method_api: 'Rápido',
     method_sim: 'Más fiable',
@@ -65,8 +87,8 @@ var i18n = {
     btn_clear_gallery: 'Vaciar',
     empty_title_image: 'Aún no hay imágenes',
     empty_title_video: 'Aún no hay vídeos',
-    empty_text_image: 'Aparecerán aquí mientras se generan',
-    empty_text_video: 'Aparecerán aquí mientras se generan',
+    empty_text_image: 'Ve a la pestaña Crear, pega tus prompts y pulsa Crear imágenes',
+    empty_text_video: 'Ve a la pestaña Crear, pega tus prompts y pulsa Crear vídeos',
     // Actions
     btn_continue: 'Continuar',
     btn_retry: 'Reintentar fallidos',
@@ -94,7 +116,7 @@ var i18n = {
     log_complete: 'Ejecución completada',
     log_paste_first: 'Pega prompts antes de crear',
     log_loaded_count: 'prompts cargados',
-    tutorial: '<h3>Cómo usar</h3><div class="item"><p><b>1.</b> Abre Google Flow y entra en un proyecto.</p></div><div class="item"><p><b>2.</b> En la pestaña <b>Crear</b>, configura modelo, formato y nº por prompt.</p></div><div class="item"><p><b>3.</b> Pega tus prompts (uno por línea) o carga un archivo .txt.</p></div><div class="item"><p><b>4.</b> Pulsa <b>Crear imágenes/vídeos</b>. Verás el progreso en tiempo real.</p></div><div class="item"><p><b>5.</b> En <b>Resultados</b> aparecerán las imágenes/vídeos mientras se generan, con auto-descarga.</p></div><h3>Ajustes</h3><div class="item"><p><b>Pausa entre prompts:</b> espera entre cada generación. Sube a 30-60s para batches grandes.</p></div><div class="item"><p><b>Extensión activa:</b> apaga para detener cualquier ejecución en curso.</p></div>'
+    tutorial: '<h3>Cómo usar</h3><div class="item"><p><b>1.</b> Abre Google Flow y entra en un proyecto.</p></div><div class="item"><p><b>2.</b> En la pestaña <b>Crear</b>, configura modelo, formato y nº por prompt.</p></div><div class="item"><p><b>3.</b> Pega tus prompts (uno por línea) o carga un archivo .txt.</p></div><div class="item"><p><b>4.</b> Pulsa <b>Crear imágenes/vídeos</b>. Verás el progreso en tiempo real.</p></div><div class="item"><p><b>5.</b> En <b>Resultados</b> aparecerán las imágenes/vídeos mientras se generan, con auto-descarga.</p></div><h3>Personaje (consistencia)</h3><div class="item"><p><b>1.</b> Crea un personaje dentro de Flow (sección Characters).</p></div><div class="item"><p><b>2.</b> En Configuración pulsa <b>🔄 Cargar personajes</b> y elígelo en el desplegable.</p></div><div class="item"><p><b>3.</b> Todas las imágenes del lote mantendrán ese personaje. Solo aplica a imágenes.</p></div><h3>Carpeta de descarga</h3><div class="item"><p>Por defecto se guarda en <b>Descargas</b>. Pulsa <b>📁 Elegir carpeta</b> para guardar en otra. El navegador pedirá permiso 1 vez al empezar cada lote.</p></div><h3>Método de envío</h3><div class="item"><p><b>Rápido:</b> más veloz (~2s), pero a veces Google lo bloquea.</p></div><div class="item"><p><b>Más fiable:</b> más lento pero supera bloqueos. Úsalo si el rápido falla mucho.</p></div><h3>Ajustes</h3><div class="item"><p><b>Pausa entre prompts:</b> espera entre cada generación. Sube a 30-60s para batches grandes.</p></div><div class="item"><p><b>Detener:</b> en la pestaña Estado, para cualquier ejecución en curso.</p></div>'
   },
   en: {
     status_connected: 'Flow detected',
@@ -121,6 +143,28 @@ var i18n = {
     lbl_pause: 'Pause between prompts',
     lbl_enable: 'Extension active',
     lbl_duration: 'Duration',
+    lbl_character: 'Character',
+    btn_load_chars: '🔄 Load characters',
+    char_none: 'None',
+    char_loading: 'Searching characters...',
+    char_none_found: 'No characters found',
+    char_need_flow: 'Open Flow and enter a project to load characters',
+    char_fallback_name: 'Character',
+    folder_save_failed: 'Could not save to the folder',
+    grp_create: 'Creation',
+    grp_run: 'Execution',
+    grp_output: 'Output',
+    grp_run_ctl: 'Execution',
+    grp_downloads: 'Downloads & export',
+    grp_maint: 'Maintenance',
+    pill_new: 'New',
+    lbl_folder: 'Download folder',
+    btn_pick_folder: '📁 Choose folder',
+    btn_clear_folder: '✕',
+    folder_default: 'Downloads (default)',
+    folder_current: 'Saving to: {name} · you’ll be asked for permission at each batch',
+    folder_denied: 'Folder permission denied. Using Downloads.',
+    folder_unsupported: 'Your browser can’t pick a folder. Using Downloads.',
     lbl_method: 'Send method',
     method_api: 'Fast',
     method_sim: 'Reliable',
@@ -150,8 +194,8 @@ var i18n = {
     btn_clear_gallery: 'Clear',
     empty_title_image: 'No images yet',
     empty_title_video: 'No videos yet',
-    empty_text_image: 'They will appear here while generating',
-    empty_text_video: 'They will appear here while generating',
+    empty_text_image: 'Go to the Create tab, paste your prompts and click Create images',
+    empty_text_video: 'Go to the Create tab, paste your prompts and click Create videos',
     btn_continue: 'Continue',
     btn_retry: 'Retry failed',
     btn_download: 'Download all',
@@ -175,7 +219,7 @@ var i18n = {
     log_complete: 'Run complete',
     log_paste_first: 'Paste prompts before creating',
     log_loaded_count: 'prompts loaded',
-    tutorial: '<h3>How to use</h3><div class="item"><p><b>1.</b> Open Google Flow and enter a project.</p></div><div class="item"><p><b>2.</b> In the <b>Create</b> tab, set model, format and number per prompt.</p></div><div class="item"><p><b>3.</b> Paste your prompts (one per line) or load a .txt file.</p></div><div class="item"><p><b>4.</b> Click <b>Create images/videos</b>. You will see live progress.</p></div><div class="item"><p><b>5.</b> In <b>Results</b> images/videos will appear as they are generated, auto-downloaded.</p></div>'
+    tutorial: '<h3>How to use</h3><div class="item"><p><b>1.</b> Open Google Flow and enter a project.</p></div><div class="item"><p><b>2.</b> In the <b>Create</b> tab, set model, format and number per prompt.</p></div><div class="item"><p><b>3.</b> Paste your prompts (one per line) or load a .txt file.</p></div><div class="item"><p><b>4.</b> Click <b>Create images/videos</b>. You will see live progress.</p></div><div class="item"><p><b>5.</b> In <b>Results</b> images/videos will appear as they are generated, auto-downloaded.</p></div><h3>Character (consistency)</h3><div class="item"><p><b>1.</b> Create a character inside Flow (Characters section).</p></div><div class="item"><p><b>2.</b> In Settings click <b>🔄 Load characters</b> and pick it from the dropdown.</p></div><div class="item"><p><b>3.</b> Every image in the batch keeps that character. Images only.</p></div><h3>Download folder</h3><div class="item"><p>Defaults to <b>Downloads</b>. Click <b>📁 Choose folder</b> to save elsewhere. The browser asks for permission once at each batch.</p></div><h3>Send method</h3><div class="item"><p><b>Fast:</b> quicker (~2s), but Google may block it sometimes.</p></div><div class="item"><p><b>Reliable:</b> slower but bypasses blocks. Use it if Fast fails often.</p></div><h3>Settings</h3><div class="item"><p><b>Pause between prompts:</b> wait between generations. Raise to 30-60s for large batches.</p></div><div class="item"><p><b>Stop:</b> in the Status tab, halts any running execution.</p></div>'
   }
 };
 
@@ -208,6 +252,8 @@ function applyLanguage() {
   // Refresh dynamic UI sections that build their own text
   if (typeof updateLivePreview === 'function') updateLivePreview();
   if (typeof updateMethodHint === 'function') updateMethodHint();
+  if (typeof rebuildCharSelect === 'function') rebuildCharSelect();
+  if (typeof updateFolderHint === 'function') updateFolderHint();
   if (typeof recountPasted === 'function') recountPasted();
   ensureGalleryEmpty();
 }
@@ -230,13 +276,16 @@ var currentSettings = {
   videoSubMode: 'frames',
   videoDuration: 8,
   enabled: true,
-  method: 'api'
+  method: 'api',
+  characterId: '',
+  characterName: '',
+  useCustomFolder: false
 };
 
 var imageModels = [
   { value: 'nano_banana_pro', label: 'Nano Banana Pro' },
   { value: 'nano_banana_2', label: 'Nano Banana 2' },
-  { value: 'imagen_4', label: 'Imagen 4' }
+  { value: 'nano_banana_2_lite', label: 'Nano Banana 2 Lite' }
 ];
 var videoModels = [
   { value: 'omni_flash', label: 'Omni Flash' },
@@ -250,7 +299,7 @@ var videoRatios = ['16:9', '9:16'];
 var MODEL_LABELS = {
   nano_banana_pro: 'Nano Banana Pro',
   nano_banana_2: 'Nano Banana 2',
-  imagen_4: 'Imagen 4',
+  nano_banana_2_lite: 'Nano Banana 2 Lite',
   omni_flash: 'Omni Flash',
   veo_lite: 'Veo 3.1 Lite',
   veo_fast: 'Veo 3.1 Fast',
@@ -275,10 +324,16 @@ var ratioSeg = document.getElementById('ratioSeg');
 var genSeg = document.getElementById('genSeg');
 var delaySl = document.getElementById('delaySl');
 var delayVal = document.getElementById('delayVal');
-var enabledTgl = document.getElementById('enabledTgl');
 var methodSeg = document.getElementById('methodSeg');
 var videoDurRow = document.getElementById('videoDurRow');
 var videoDurSeg = document.getElementById('videoDurSeg');
+var charRow = document.getElementById('charRow');
+var charSel = document.getElementById('charSel');
+var btnLoadChars = document.getElementById('btnLoadChars');
+var charThumb = document.getElementById('charThumb');
+var btnPickFolder = document.getElementById('btnPickFolder');
+var btnClearFolder = document.getElementById('btnClearFolder');
+var folderHint = document.getElementById('folderHint');
 var logDiv = document.getElementById('log');
 var statusDot = document.getElementById('statusDot');
 var connDot = document.getElementById('connDot');
@@ -352,6 +407,192 @@ function updateVideoDurVisibility() {
   videoDurRow.style.display = show ? '' : 'none';
 }
 
+// ===================== Characters =====================
+var charactersList = [];
+try {
+  var savedChars = localStorage.getItem('fp_characters');
+  if (savedChars) charactersList = JSON.parse(savedChars) || [];
+} catch (e) {}
+
+function saveCharacters() {
+  try { localStorage.setItem('fp_characters', JSON.stringify(charactersList.slice(0, 200))); } catch (e) {}
+}
+
+function updateCharVisibility() {
+  if (!charRow) return;
+  // Characters apply to image generation only.
+  charRow.style.display = currentSettings.mode === 'image' ? '' : 'none';
+}
+
+function renderCharThumb() {
+  if (!charThumb) return;
+  charThumb.innerHTML = '';
+  var c = charactersList.find(function(x){ return x.id === currentSettings.characterId; });
+  if (c && c.thumb) {
+    var img = document.createElement('img');
+    img.src = c.thumb;
+    img.alt = c.name || '';
+    charThumb.appendChild(img);
+  }
+}
+
+function rebuildCharSelect() {
+  if (!charSel) return;
+  charSel.innerHTML = '';
+  var none = document.createElement('option');
+  none.value = ''; none.textContent = t('char_none');
+  charSel.appendChild(none);
+  charactersList.forEach(function(c){
+    var opt = document.createElement('option');
+    opt.value = c.id; opt.textContent = c.name || t('char_fallback_name');
+    charSel.appendChild(opt);
+  });
+  // Restore selection if the saved character still exists; otherwise reset to none.
+  var exists = charactersList.some(function(c){ return c.id === currentSettings.characterId; });
+  if (!exists) { currentSettings.characterId = ''; currentSettings.characterName = ''; }
+  charSel.value = currentSettings.characterId || '';
+  renderCharThumb();
+}
+
+// ===================== Download folder (File System Access API) =====================
+// Default: browser Downloads (anchor download in content). Optional: pick any folder;
+// content fetches the media, passes it here, and we write it into the chosen folder.
+var folderHandle = null;
+
+// Minimal IndexedDB store for the directory handle (handles are structured-cloneable).
+function idbOpen() {
+  return new Promise(function(resolve, reject) {
+    var req = indexedDB.open('flowpilot', 1);
+    req.onupgradeneeded = function() { req.result.createObjectStore('handles'); };
+    req.onsuccess = function() { resolve(req.result); };
+    req.onerror = function() { reject(req.error); };
+  });
+}
+function idbPut(key, val) {
+  return idbOpen().then(function(db) {
+    return new Promise(function(resolve, reject) {
+      var tx = db.transaction('handles', 'readwrite');
+      tx.objectStore('handles').put(val, key);
+      tx.oncomplete = function() { resolve(); };
+      tx.onerror = function() { reject(tx.error); };
+    });
+  });
+}
+function idbGet(key) {
+  return idbOpen().then(function(db) {
+    return new Promise(function(resolve, reject) {
+      var tx = db.transaction('handles', 'readonly');
+      var r = tx.objectStore('handles').get(key);
+      r.onsuccess = function() { resolve(r.result || null); };
+      r.onerror = function() { reject(r.error); };
+    });
+  });
+}
+function idbDel(key) {
+  return idbOpen().then(function(db) {
+    return new Promise(function(resolve) {
+      var tx = db.transaction('handles', 'readwrite');
+      tx.objectStore('handles').delete(key);
+      tx.oncomplete = function() { resolve(); };
+    });
+  });
+}
+
+function updateFolderHint() {
+  if (!folderHint) return;
+  if (folderHandle) {
+    folderHint.textContent = tf('folder_current', { name: folderHandle.name });
+    if (btnClearFolder) btnClearFolder.style.display = '';
+  } else {
+    folderHint.textContent = t('folder_default');
+    if (btnClearFolder) btnClearFolder.style.display = 'none';
+  }
+}
+
+// Returns true if we have (or just obtained) readwrite permission. withRequest must be
+// called under a user gesture (button click) to prompt.
+async function ensureFolderPermission(withRequest) {
+  if (!folderHandle) return false;
+  try {
+    var opts = { mode: 'readwrite' };
+    if ((await folderHandle.queryPermission(opts)) === 'granted') return true;
+    if (withRequest && (await folderHandle.requestPermission(opts)) === 'granted') return true;
+  } catch (e) {}
+  return false;
+}
+
+async function pickDownloadFolder() {
+  if (typeof window.showDirectoryPicker !== 'function') {
+    addLog(t('folder_unsupported'), '#f59e0b');
+    return;
+  }
+  try {
+    var handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+    folderHandle = handle;
+    await idbPut('downloadDir', handle);
+    currentSettings.useCustomFolder = true;
+    saveSettings(); sendSettings();
+    updateFolderHint();
+  } catch (e) {
+    // AbortError = user cancelled the picker (expected). Anything else = real failure.
+    if (e && e.name !== 'AbortError') {
+      addLog(t('folder_unsupported'), '#f59e0b');
+    }
+  }
+}
+
+async function clearDownloadFolder() {
+  folderHandle = null;
+  try { await idbDel('downloadDir'); } catch (e) {}
+  currentSettings.useCustomFolder = false;
+  saveSettings(); sendSettings();
+  updateFolderHint();
+}
+
+// Write a blob into the chosen folder, uniquifying the name on collision.
+async function writeToFolder(filename, blob) {
+  if (!folderHandle) return false;
+  var granted = await ensureFolderPermission(false);
+  if (!granted) return false;
+  var name = filename;
+  // Uniquify: if the name exists, append " (n)".
+  try {
+    var dot = filename.lastIndexOf('.');
+    var base = dot > 0 ? filename.slice(0, dot) : filename;
+    var ext = dot > 0 ? filename.slice(dot) : '';
+    var n = 1;
+    /* eslint-disable no-constant-condition */
+    while (true) {
+      var clash = true;
+      try { await folderHandle.getFileHandle(name, { create: false }); }
+      catch (e) { clash = false; }
+      if (!clash) break;
+      name = base + ' (' + n + ')' + ext;
+      n++;
+      if (n > 999) break;
+    }
+  } catch (e) {}
+  try {
+    var fh = await folderHandle.getFileHandle(name, { create: true });
+    var w = await fh.createWritable();
+    await w.write(blob);
+    await w.close();
+    return true;
+  } catch (e) {
+    addLog('⚠️ ' + t('folder_save_failed') + ': ' + (e && e.message || e), '#f59e0b');
+    return false;
+  }
+}
+
+// Restore the saved folder handle on load (permission is re-checked before each batch).
+(async function initFolder() {
+  try {
+    var h = await idbGet('downloadDir');
+    if (h) { folderHandle = h; }
+  } catch (e) {}
+  updateFolderHint();
+})();
+
 function initControls() {
   setSegValue(modeSeg, currentSettings.mode);
   updateVideoSubVisibility();
@@ -361,6 +602,7 @@ function initControls() {
     rebuildModelSelect();
     rebuildRatios();
     updateVideoDurVisibility();
+    updateCharVisibility();
     saveSettings(); sendSettings();
     applyModeLabels();
     updateLivePreview();
@@ -380,6 +622,33 @@ function initControls() {
     saveSettings(); sendSettings();
   });
   updateVideoDurVisibility();
+
+  // Character picker
+  rebuildCharSelect();
+  updateCharVisibility();
+  if (charSel) {
+    charSel.addEventListener('change', function() {
+      currentSettings.characterId = charSel.value;
+      var c = charactersList.find(function(x){ return x.id === charSel.value; });
+      currentSettings.characterName = c ? (c.name || '') : '';
+      renderCharThumb();
+      saveSettings(); sendSettings();
+    });
+  }
+  if (btnLoadChars) {
+    btnLoadChars.addEventListener('click', function() {
+      if (!connected) { addLog(t('char_need_flow'), '#f59e0b'); return; }
+      btnLoadChars.textContent = t('char_loading');
+      btnLoadChars.disabled = true;
+      sendToContent({ action: 'scanCharacters' });
+      // Safety re-enable in case no response comes back.
+      setTimeout(function(){ if (btnLoadChars.disabled) { btnLoadChars.disabled = false; btnLoadChars.textContent = t('btn_load_chars'); } }, 15000);
+    });
+  }
+
+  // Download folder
+  if (btnPickFolder) btnPickFolder.addEventListener('click', function() { pickDownloadFolder(); });
+  if (btnClearFolder) btnClearFolder.addEventListener('click', function() { clearDownloadFolder(); });
 
   rebuildModelSelect();
   modelSel.addEventListener('change', function() {
@@ -407,14 +676,10 @@ function initControls() {
     updateLivePreview();
   });
 
-  enabledTgl.checked = currentSettings.enabled;
-  statusDot.classList.toggle('on', currentSettings.enabled);
-  enabledTgl.addEventListener('change', function() {
-    currentSettings.enabled = enabledTgl.checked;
-    statusDot.classList.toggle('on', currentSettings.enabled && connected);
-    saveSettings();
-    sendToContent({ action: 'setEnabled', enabled: currentSettings.enabled });
-  });
+  // Extension is always "on"; stopping a run is done via the Detener button. The green
+  // status dot now purely reflects the Flow connection.
+  currentSettings.enabled = true;
+  if (statusDot) statusDot.classList.toggle('on', connected);
 
   // Method toggle: 'api' (fast, direct) or 'simulated' (stealth, page-native button).
   // Default 'api' for users whose accounts pass reCAPTCHA. Switch to 'simulated' if 403 errors persist.
@@ -447,7 +712,12 @@ function updateLivePreview() {
   var lpBody = document.getElementById('lpBody');
   var lpMeta = document.getElementById('lpMeta');
   var modelLbl = MODEL_LABELS[currentSettings.model] || currentSettings.model;
-  if (lpBody) lpBody.textContent = modelLbl + ' · ' + currentSettings.aspectRatio + ' · ×' + currentSettings.generationCount;
+  var body = modelLbl + ' · ' + currentSettings.aspectRatio + ' · ×' + currentSettings.generationCount;
+  // Surface the selected character so the user sees it will be applied.
+  if (currentSettings.mode === 'image' && currentSettings.characterId && currentSettings.characterName) {
+    body += ' · 🎭 ' + currentSettings.characterName;
+  }
+  if (lpBody) lpBody.textContent = body;
   if (lpMeta) lpMeta.textContent = tf('preview_meta', { n: currentSettings.delaySeconds });
 }
 
@@ -521,7 +791,7 @@ function refreshConnectionUI() {
   if (connText) connText.textContent = connected ? t('status_connected') : t('status_disconnected');
   if (connMeta) connMeta.textContent = connected ? t('status_meta_connected') : t('status_meta_disconnected');
   if (connDot) connDot.classList.toggle('on', connected);
-  if (statusDot) statusDot.classList.toggle('on', connected && currentSettings.enabled);
+  if (statusDot) statusDot.classList.toggle('on', connected);
 }
 
 function setConnected(val) {
@@ -897,6 +1167,30 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
     updateProgress(msg.gen, msg.dl, msg.fail);
   } else if (msg.type === 'batch_cancelled') {
     markPendingCancelled();
+  } else if (msg.type === 'characters_list') {
+    if (btnLoadChars) { btnLoadChars.disabled = false; btnLoadChars.textContent = t('btn_load_chars'); }
+    charactersList = msg.characters || [];
+    saveCharacters();
+    rebuildCharSelect();
+    if (!charactersList.length) addLog(t('char_none_found'), '#f59e0b');
+  } else if (msg.type === 'save_media') {
+    // Content fetched the media and passed it here as a data URL; write into the chosen folder.
+    (async function() {
+      try {
+        var resp = await fetch(msg.dataUrl);
+        var blob = await resp.blob();
+        var wrote = await writeToFolder(msg.filename, blob);
+        if (!wrote) {
+          // Folder write failed (permission lost, etc.) — don't lose the file, fall back to Downloads.
+          var u = URL.createObjectURL(blob);
+          var a = document.createElement('a');
+          a.href = u; a.download = msg.filename; a.click();
+          URL.revokeObjectURL(u);
+        }
+      } catch (e) {
+        addLog('⚠️ ' + t('folder_save_failed') + ': ' + (e && e.message || e), '#f59e0b');
+      }
+    })();
   }
 });
 
@@ -941,7 +1235,7 @@ document.getElementById('fileInput').addEventListener('change', async function(e
     pasteArea.scrollTop = 0;
   }
   addLog(lines.length + ' ' + t('log_loaded') + ' "' + file.name + '"', '#6366f1');
-  flashFileFeedback('"' + file.name + '" — ' + lines.length + ' prompts', true);
+  flashFileFeedback('"' + file.name + '" — ' + tf(lines.length === 1 ? 'counter_singular' : 'counter_plural', { n: lines.length }), true);
   e.target.value = '';
 });
 
@@ -1002,15 +1296,28 @@ function recountPasted() {
   var key = lines.length === 1 ? 'counter_singular' : 'counter_plural';
   pasteCount.textContent = tf(key, { n: lines.length });
   pasteCount.classList.toggle('has', lines.length > 0);
+  // Disable the main CTA when there is nothing to create (uses existing :disabled style).
+  var cta = document.getElementById('btnLoadPasted');
+  if (cta) cta.disabled = lines.length === 0;
 }
 if (pasteArea) {
   pasteArea.addEventListener('input', recountPasted);
   pasteArea.addEventListener('paste', function(){ setTimeout(recountPasted, 0); });
 }
-document.getElementById('btnLoadPasted').addEventListener('click', function() {
+document.getElementById('btnLoadPasted').addEventListener('click', async function() {
   if (!pasteArea) return;
   var lines = pasteArea.value.split('\n').map(function(l){return l.trim();}).filter(function(l){return l.length > 0;});
   if (!lines.length) { addLog(t('log_paste_first'), '#f59e0b'); return; }
+  // If a custom folder is set, (re)confirm write permission now — this click is the user
+  // gesture Chrome requires. If denied/lost, fall back to Downloads for this batch.
+  if (folderHandle) {
+    var ok = await ensureFolderPermission(true);
+    currentSettings.useCustomFolder = ok;
+    if (!ok) addLog(t('folder_denied'), '#f59e0b');
+    saveSettings(); sendSettings();
+  } else {
+    currentSettings.useCustomFolder = false;
+  }
   addLog(lines.length + ' ' + t('log_loaded_count'), '#6366f1');
   switchTab('resultados');
   sendToContent({ action: 'startReplay', prompts: lines, settings: currentSettings });

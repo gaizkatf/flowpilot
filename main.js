@@ -554,7 +554,7 @@
     }
 
     // 5. Model selection
-    var modelNames = { nano_banana_pro:'Nano Banana Pro', nano_banana_2:'Nano Banana 2', imagen_4:'Imagen 4', veo_fast:'Veo 3.1 - Fast', veo_quality:'Veo 3.1 - Quality' };
+    var modelNames = { nano_banana_pro:'Nano Banana Pro', nano_banana_2:'Nano Banana 2', nano_banana_2_lite:'Nano Banana 2 Lite', veo_fast:'Veo 3.1 - Fast', veo_quality:'Veo 3.1 - Quality' };
     var target = modelNames[settings.model] || 'Nano Banana Pro';
     popper = document.querySelector('[data-radix-popper-content-wrapper]');
     if (popper) {
@@ -587,6 +587,7 @@
   function guardarEstado() { localStorage.setItem('gemini_estado', JSON.stringify({ promptsPendientes: prompts.slice(indiceActual), promptsFallidos: JSON.parse(localStorage.getItem('gemini_fallidos')||'[]'), settings: settings, timestamp: Date.now() })); }
   function obtenerEstado() { try { return JSON.parse(localStorage.getItem('gemini_estado')); } catch(e) { return null; } }
   function guardarFallido(p) { if(!p) return; var f = JSON.parse(localStorage.getItem('gemini_fallidos')||'[]'); if (f.indexOf(p)===-1) f.push(p); localStorage.setItem('gemini_fallidos', JSON.stringify(f)); }
+  function guardarPolitica(p) { if(!p) return; var f = JSON.parse(localStorage.getItem('gemini_politica')||'[]'); if (f.indexOf(p)===-1) f.push(p); localStorage.setItem('gemini_politica', JSON.stringify(f)); }
 
   // === EXECUTION ===
   async function ejecutarPrompts(lista, esFallidos) {
@@ -738,9 +739,7 @@
       try {
         var r = await fetch(entry[0]);
         var bl = await r.blob();
-        var u = URL.createObjectURL(bl);
-        var a = document.createElement('a'); a.href = u; a.download = fn; a.click();
-        URL.revokeObjectURL(u);
+        await saveBlob(bl, fn);
       } catch(e) { errs++; vlog('  ❌ ' + e.message, '#ef4444'); }
       await wait(800);
     }
@@ -750,25 +749,57 @@
 
   // Download single image (used by auto-download per generation)
   // Filename = prompt text only (user already numbers prompts, do not re-prefix)
+  // Convert a blob to a data URL so it can cross into the sidepanel via postMessage.
+  function blobToDataURL(blob) {
+    return new Promise(function(resolve, reject) {
+      var fr = new FileReader();
+      fr.onload = function() { resolve(fr.result); };
+      fr.onerror = function() { reject(fr.error); };
+      fr.readAsDataURL(blob);
+    });
+  }
+
+  // Save a fetched blob: to the user's chosen folder (via sidepanel) or the default
+  // Downloads folder (anchor). settings.useCustomFolder is pushed from the sidepanel.
+  async function saveBlob(blob, fname) {
+    if (settings.useCustomFolder) {
+      try {
+        var dataUrl = await blobToDataURL(blob);
+        window.postMessage({ source: 'gf-main', payload: { type: 'save_media', dataUrl: dataUrl, filename: fname } }, '*');
+        return true;
+      } catch (e) { /* fall through to anchor */ }
+    }
+    var u = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = u; a.download = fname; a.click();
+    URL.revokeObjectURL(u);
+    return true;
+  }
+
   async function descargarUnaImagen(item) {
     var ext = item.isVideo ? '.mp4' : '.png';
     var defaultName = (item.isVideo ? 'video_' : 'image_') + item.idx;
     var safe = (item.prompt || defaultName).replace(/[<>:"/\\|?*\n\r]/g, '').replace(/\s+/g, ' ').trim();
     if (safe.length > 180) safe = safe.substring(0, 180);
     var fname = safe + (item.suffix ? ' (' + item.suffix + ')' : '') + ext;
-    try {
-      var r = await fetch(item.url);
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      var bl = await r.blob();
-      var u = URL.createObjectURL(bl);
-      var a = document.createElement('a');
-      a.href = u; a.download = fname; a.click();
-      URL.revokeObjectURL(u);
-      return true;
-    } catch (e) {
-      vlog('  ⚠️ DL ' + fname + ': ' + e.message, '#f59e0b');
-      return false;
+    // fife/redirect URLs can 403 briefly right after generation — retry with backoff so
+    // successfully-generated media isn't silently lost.
+    var delays = [0, 2500, 5000, 9000];
+    var lastErr = '';
+    for (var attempt = 0; attempt < delays.length; attempt++) {
+      if (delays[attempt]) await wait(delays[attempt]);
+      try {
+        var r = await fetch(item.url);
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        var bl = await r.blob();
+        await saveBlob(bl, fname);
+        return true;
+      } catch (e) {
+        lastErr = e.message;
+      }
     }
+    vlog('  ⚠️ DL falló tras reintentos: ' + fname + ' (' + lastErr + ')', '#f59e0b');
+    return false;
   }
 
   // Download all images from API-tracked URLs (V2: works without UI tiles)
@@ -777,21 +808,20 @@
       vlog('❌ Nada para descargar', '#ef4444');
       return;
     }
-    vlog('📥 Descargando ' + generatedMedia.length + ' imágenes...', '#3b82f6');
+    vlog('📥 Descargando ' + generatedMedia.length + ' archivos...', '#3b82f6');
     var ok = 0, fail = 0;
     for (var i = 0; i < generatedMedia.length; i++) {
       var m = generatedMedia[i];
-      var safe = (m.prompt || ('image_' + m.idx)).replace(/[<>:"/\\|?*\n\r]/g, '').replace(/\s+/g, ' ').trim();
+      var safe = (m.prompt || ((m.isVideo ? 'video_' : 'image_') + m.idx)).replace(/[<>:"/\\|?*\n\r]/g, '').replace(/\s+/g, ' ').trim();
       if (safe.length > 180) safe = safe.substring(0, 180);
-      var fname = safe + (m.suffix ? ' (' + m.suffix + ')' : '') + '.png';
+      // Use the correct extension per item — videos are .mp4, not .png.
+      var mext = m.isVideo ? '.mp4' : '.png';
+      var fname = safe + (m.suffix ? ' (' + m.suffix + ')' : '') + mext;
       try {
         var r = await fetch(m.url);
         if (!r.ok) throw new Error('HTTP ' + r.status);
         var bl = await r.blob();
-        var u = URL.createObjectURL(bl);
-        var a = document.createElement('a');
-        a.href = u; a.download = fname; a.click();
-        URL.revokeObjectURL(u);
+        await saveBlob(bl, fname);
         ok++;
       } catch (e) {
         fail++;
@@ -818,7 +848,7 @@
   var MODEL_MAP = {
     nano_banana_pro: 'GEM_PIX_2',
     nano_banana_2: 'NARWHAL',
-    imagen_4: 'IMAGEN_3_5'
+    nano_banana_2_lite: 'HARBOR_SEAL'
   };
   var RATIO_MAP = {
     '16:9': 'IMAGE_ASPECT_RATIO_LANDSCAPE',
@@ -1002,14 +1032,19 @@
     };
     var requests = [];
     for (var i = 0; i < count; i++) {
-      requests.push({
+      var req = {
         clientContext: JSON.parse(JSON.stringify(ctx)),
         imageAspectRatio: imageRatio,
         imageInputs: [],
         imageModelName: imageModel,
         seed: Math.floor(Math.random() * 1000000),
         structuredPrompt: { parts: [{ text: promptText }] }
-      });
+      };
+      // Character reference (consistency): Flow expects referenceEntities per request.
+      if (opts.characterId) {
+        req.referenceEntities = [{ entityId: opts.characterId }];
+      }
+      requests.push(req);
     }
     return {
       clientContext: ctx,
@@ -1034,7 +1069,8 @@
       model: opts.model,
       aspectRatio: opts.aspectRatio,
       generationCount: opts.generationCount,
-      projectId: projectId
+      projectId: projectId,
+      characterId: opts.characterId
     });
     body.clientContext.recaptchaContext.token = recaptchaToken;
     for (var i = 0; i < body.requests.length; i++) {
@@ -1240,7 +1276,7 @@
   var IMAGE_MODEL_MAP_PURE = {
     nano_banana_pro: 'nano_banana_pro',
     nano_banana_2: 'narwhal_display',
-    imagen_4: 'imagen_4'
+    nano_banana_2_lite: 'harbor_seal'
   };
   var VIDEO_MODEL_MAP_PURE = {
     omni_flash: 'abra',
@@ -1256,9 +1292,136 @@
     '3:4': 'PORTRAIT'
   };
 
+  // ===== CHARACTERS (reference / consistency) =====
+  // No API — read from Flow's DOM. Character tiles are div[data-tile-id] with an <img>.
+  // characterServerId = data-tile-id minus the "fe_id_" prefix. Name = img alt. Thumb = img src.
+
+  function readCharacterTiles(rootEl) {
+    var scope = rootEl || document;
+    // Characters (and only characters) link to /project/<pid>/character/<id>.
+    // Generated images link to /edit/<id>. Match the character route to filter cleanly.
+    var links = Array.prototype.slice.call(scope.querySelectorAll('a[href*="/character/"]'));
+    var out = [];
+    var seen = {};
+    links.forEach(function(a){
+      var href = a.getAttribute('href') || '';
+      var m = href.match(/\/character\/([a-f0-9-]{36})/i);
+      if (!m) return;
+      var id = m[1];
+      if (seen[id]) return;
+      seen[id] = true;
+      // Name + thumb from the img inside (or around) the link.
+      var img = a.querySelector('img') || (a.closest('[data-tile-id]') && a.closest('[data-tile-id]').querySelector('img'));
+      var name = (img && (img.getAttribute('alt') || img.getAttribute('aria-label'))) || '';
+      out.push({ id: id, name: name.trim() || 'Personaje', thumb: (img && img.src) || '' });
+    });
+    return out;
+  }
+
+  // Vanilla equivalents of the jQuery :has(i:contains(...)) selectors used to drive the UI.
+  function findButtonByIcon(iconText, scope) {
+    var btns = (scope || document).querySelectorAll('button, div[role="button"], [type="button"]');
+    for (var i = 0; i < btns.length; i++) {
+      var ic = btns[i].querySelector('i, span.google-symbols, [class*="google-symbols"], span.material-icons');
+      if (ic && ic.textContent.trim() === iconText && btns[i].offsetParent) return btns[i];
+    }
+    return null;
+  }
+
+  // Find the prompt-box "add reference" button. Multiple add_2 icons exist (toolbar Create,
+  // etc.), so prefer the one that opens a popover/dialog (aria-haspopup / aria-controls radix).
+  function findAddReferenceButton() {
+    var btns = document.querySelectorAll('button, div[role="button"], [type="button"]');
+    var fallback = null;
+    for (var i = 0; i < btns.length; i++) {
+      var b = btns[i];
+      if (!b.offsetParent) continue;
+      var ic = b.querySelector('i, span.google-symbols, [class*="google-symbols"]');
+      if (!ic || ic.textContent.trim() !== 'add_2') continue;
+      var pop = b.getAttribute('aria-haspopup');
+      var ctrl = b.getAttribute('aria-controls') || '';
+      if (pop || /radix-/.test(ctrl)) return b; // the popover trigger next to the prompt box
+      if (!fallback) fallback = b;
+    }
+    return fallback;
+  }
+
+  // Open the "add reference" dialog, switch to character type, scrape the list, close.
+  // Non-disruptive: it's an overlay dialog, the prompt box stays intact.
+  async function scanCharactersFromFlow() {
+    // 0. If character tiles are already visible (user on Characters tab), just read them.
+    var direct = readCharacterTiles(document);
+    if (direct.length > 0) return direct;
+
+    // 1. Open the add-media/reference dialog (icon add_2 near the prompt box).
+    var addBtn = findAddReferenceButton();
+    if (!addBtn) return { error: 'add_button_not_found' };
+    addBtn.click();
+    await wait(500);
+
+    // 2. In the dialog, pick the "character" type (icon accessibility_new).
+    var dialog = document.querySelector('div[role="dialog"]');
+    var charTypeBtn = findButtonByIcon('accessibility_new', dialog || document);
+    if (charTypeBtn) { charTypeBtn.click(); await wait(700); }
+
+    // 3. Read character tiles from the dialog's virtuoso list.
+    var chars = [];
+    for (var poll = 0; poll < 12; poll++) {
+      dialog = document.querySelector('div[role="dialog"]');
+      chars = readCharacterTiles(dialog || document);
+      if (chars.length > 0) break;
+      await wait(300);
+    }
+
+    // 4. Close the dialog (Escape).
+    try {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true }));
+      var closeBtn = dialog && findButtonByIcon('close', dialog);
+      if (closeBtn) closeBtn.click();
+    } catch (e) {}
+    await wait(200);
+
+    return chars;
+  }
+
+  // Build a CHARACTER ingredient object matching Flow's shape (for setState fallback).
+  function buildCharacterIngredient(characterServerId) {
+    return {
+      type: 'CHARACTER',
+      ingredientId: uuid4(),
+      characterServerId: characterServerId,
+      addedTime: new Date(),
+      modifiedTime: new Date(),
+      isLoading: false,
+      preferredIngredientType: 'REFERENCE'
+    };
+  }
+
+  // Ensure the given character is present in the store's ingredients before onSubmit (Pure mode).
+  // Flow does NOT keep the character between prompts, so this runs each iteration.
+  function applyCharacterPure(store, characterId) {
+    if (!store || !characterId) return;
+    try {
+      var st = store.getState();
+      var ings = (st && st.ingredients) || [];
+      var already = ings.some(function(x){ return x && x.type === 'CHARACTER' && x.characterServerId === characterId; });
+      if (already) return;
+      var actions = st && st.actions;
+      if (actions && typeof actions.addCharacterIngredient === 'function') {
+        actions.addCharacterIngredient({ characterServerId: characterId, source: 'REUSE_PROMPT' });
+        // Verify it landed; if not, fall back to setState.
+        var after = store.getState().ingredients || [];
+        if (after.some(function(x){ return x && x.type === 'CHARACTER' && x.characterServerId === characterId; })) return;
+      }
+      // Fallback: write the ingredient directly.
+      var cur = store.getState().ingredients || [];
+      store.setState({ ingredients: cur.concat([buildCharacterIngredient(characterId)]) });
+    } catch (e) {}
+  }
+
   // Watch DOM for new media URLs appearing after onSubmit fires.
   // Diff against pre-submit snapshot so existing thumbnails don't count.
-  function captureNewMediaUrls(timeoutMs, expectedCount, isVideo, snapshot) {
+  function captureNewMediaUrls(timeoutMs, expectedCount, isVideo, snapshot, control) {
     return new Promise(function(resolve) {
       var captured = {};
       var found = [];
@@ -1317,10 +1480,13 @@
         }
         if (found.length >= expectedCount) {
           if (settleTimer) clearTimeout(settleTimer);
+          // Multi-image batches render placeholders then swap to final URLs; give them longer.
+          var settleMs = expectedCount > 1 ? 1300 : 500;
           settleTimer = setTimeout(function() {
+            if (abortCheck) clearInterval(abortCheck);
             try { observer.disconnect(); } catch (e) {}
             resolve(found.slice(0, expectedCount));
-          }, 500);
+          }, settleMs);
         }
       }
       var observerSelector = isVideo ? 'video, source' : 'img, source';
@@ -1343,7 +1509,21 @@
       observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['src','srcset'] });
       // Initial scan: if media appeared instantly between snapshot + observer attach
       try { document.querySelectorAll(observerSelector).forEach(consider); } catch (e) {}
+      // Abort support: caller can stop the wait early (e.g. an error response arrived).
+      var abortCheck = null;
+      if (control) {
+        abortCheck = setInterval(function() {
+          if (control.aborted) {
+            clearInterval(abortCheck);
+            try { observer.disconnect(); } catch (e) {}
+            resolve(found.slice(0, expectedCount));
+          }
+        }, 300);
+      }
       setTimeout(function() {
+        if (abortCheck) clearInterval(abortCheck);
+        // Final re-scan in case a late render didn't fire a mutation the observer saw.
+        try { document.querySelectorAll(observerSelector).forEach(consider); } catch (e) {}
         try { observer.disconnect(); } catch (e) {}
         resolve(found.slice(0, expectedCount));
       }, timeoutMs);
@@ -1412,6 +1592,12 @@
     try { actions.setPrompt(promptText); } catch (e) { return { ok: false, status: 0, text: 'setPrompt_err: ' + e.message }; }
     await wait(250);
 
+    // 6. Character reference (consistency). Re-applied every prompt — Flow drops it after each gen.
+    if (!isVideo && settings.characterId) {
+      applyCharacterPure(store, settings.characterId);
+      await wait(150);
+    }
+
     // Snapshot existing media elements + URLs + UUIDs so the capture observer can
     // reject anything that already exists — even if a delayed previous prompt updates
     // its IMG.src late, the IMG element itself is in elSet and gets rejected.
@@ -1430,6 +1616,10 @@
       });
     } catch (e) {}
 
+    // Arm the passive response capture (background.js → 'gf-flow-response' → _fpLastFlowResponse)
+    // so we can tell a real reCAPTCHA/403/quota rejection apart from a slow render.
+    _fpResetFlowResponse();
+
     // Fire native submit (this calls Flow's own grecaptcha + fetch — same path as manual)
     try {
       onSubmit();
@@ -1437,16 +1627,65 @@
       return { ok: false, status: 0, text: 'submit_err: ' + e.message };
     }
 
-    // Wait for new media URLs in DOM
     var expectedCount = Math.max(1, parseInt(settings.generationCount, 10) || 1);
-    var timeoutMs = isVideo ? 120000 : 45000;
-    var urls = await captureNewMediaUrls(timeoutMs, expectedCount, isVideo, {
-      urlMap: snapshotUrlMap, elSet: snapshotElSet, keySet: snapshotKeySet
+    var timeoutMs = isVideo ? 120000 : 75000;
+    var snap = { urlMap: snapshotUrlMap, elSet: snapshotElSet, keySet: snapshotKeySet };
+    var control = { aborted: false };
+
+    // Race media capture against an error-response watcher. If Flow returns 401/403/429
+    // (or a reCAPTCHA/quota body), bail immediately with that status so replayPrompts'
+    // existing recovery (reload + auto-resume + backoff) runs for pure mode too.
+    function looksBlocked(resp) {
+      if (!resp) return false;
+      if (typeof resp.status === 'number' && resp.status >= 400) return true;
+      var b = String(resp.body || '');
+      return /reCAPTCHA|PERMISSION_DENIED|RESOURCE_EXHAUSTED|quota|throttle/i.test(b);
+    }
+    var errWatch = (async function() {
+      var start = Date.now();
+      while (Date.now() - start < timeoutMs && !control.aborted) {
+        if (looksBlocked(_fpLastFlowResponse)) return _fpLastFlowResponse;
+        await wait(300);
+      }
+      return null;
+    })();
+
+    var capturePromise = captureNewMediaUrls(timeoutMs, expectedCount, isVideo, snap, control)
+      .then(function(u) { return { kind: 'media', urls: u }; });
+    var errorPromise = errWatch.then(function(r) {
+      // Only let the error watcher win the race when it actually saw an error.
+      return r ? { kind: 'error', resp: r } : new Promise(function() {});
     });
 
-    if (!urls || urls.length === 0) {
-      return { ok: false, status: 0, text: 'no_media_captured (timeout o request bloqueado por reCAPTCHA)' };
+    var winner = await Promise.race([capturePromise, errorPromise]);
+    control.aborted = true; // stop whichever loser is still running
+
+    if (winner.kind === 'error') {
+      var er = winner.resp || {};
+      return { ok: false, status: er.status || 403, text: er.body || 'reCAPTCHA/bloqueo' };
     }
+
+    var urls = winner.urls || [];
+
+    // Adaptive: if capture came back empty, the media may just be slow. Do ONE bonus pass
+    // (short) before declaring failure — and re-check for a blocking response.
+    if (urls.length === 0) {
+      if (looksBlocked(_fpLastFlowResponse)) {
+        var er2 = _fpLastFlowResponse || {};
+        return { ok: false, status: er2.status || 403, text: er2.body || 'reCAPTCHA/bloqueo' };
+      }
+      await wait(3000);
+      control.aborted = false;
+      urls = await captureNewMediaUrls(15000, expectedCount, isVideo, snap, control);
+      if (urls.length === 0) {
+        if (looksBlocked(_fpLastFlowResponse)) {
+          var er3 = _fpLastFlowResponse || {};
+          return { ok: false, status: er3.status || 403, text: er3.body || 'reCAPTCHA/bloqueo' };
+        }
+        return { ok: false, status: 0, text: 'no_media_captured (timeout — la imagen no apareció a tiempo)' };
+      }
+    }
+
     // Synth a response-shaped object compatible with extractMediaUrls()
     var stamp = Date.now();
     var fakeResp = {
@@ -1779,7 +2018,7 @@
   var MODEL_LABEL = {
     nano_banana_pro: 'Nano Banana Pro',
     nano_banana_2: 'Nano Banana 2',
-    imagen_4: 'Imagen 4',
+    nano_banana_2_lite: 'Nano Banana 2 Lite',
     omni_flash: 'Omni Flash',
     veo_lite: 'Veo 3.1 Lite',
     veo_fast: 'Veo 3.1 Fast',
@@ -1810,6 +2049,14 @@
     // Prevents account-aging 403 reCAPTCHA on long sessions (the "browser open too long" problem).
     var REFRESH_AFTER_N = 15;
     var okSinceReload = 0;
+    // Track in-flight auto-downloads so a proactive/final page reload never kills a
+    // download that hasn't finished yet (was dropping the media of prompts 15, 30, 45...).
+    var pendingDownloads = [];
+    async function waitPendingDownloads() {
+      if (!pendingDownloads.length) return;
+      try { await Promise.allSettled(pendingDownloads.slice()); } catch (e) {}
+      pendingDownloads = [];
+    }
     // Pre-batch check for "Más fiable": wait until Flow's React tree exposes the
     // promptBoxStore. Page may take 20-30s on slow connections. Abort batch with a
     // clear message if it never appears — do NOT fall back to "Rápido" (user prefs).
@@ -1836,10 +2083,16 @@
         if (lista !== prompts) { prompts = lista; }
         indiceActual = i;
         ejecutando = false;
-        // Clear auto-resume on STOP so reload doesn't restart batch
+        // Clear auto-resume on STOP so reload doesn't restart batch...
         try {
           localStorage.removeItem('fp_auto_resume');
           localStorage.removeItem('fp_resume_retries');
+        } catch (e) {}
+        // ...but persist remaining prompts so the manual "Continuar" button can resume them.
+        try {
+          localStorage.setItem('gemini_estado', JSON.stringify({
+            promptsPendientes: lista.slice(i), settings: settings, timestamp: Date.now()
+          }));
         } catch (e) {}
         window.postMessage({ source: 'gf-main', payload: { type: 'batch_cancelled' } }, '*');
         try { trustedDetach(); } catch (e) {}
@@ -1878,14 +2131,14 @@
                 saveGenerated();
                 window.postMessage({ source: 'gf-main', payload: { type: 'images_ready', promptIndex: i + 1, prompt: raw, urls: simVideoUrls, isVideo: true, isReady: true } }, '*');
                 emitProgress();
-                (async function(items) {
+                pendingDownloads.push((async function(items) {
                   await wait(2000);
                   for (var ai = 0; ai < items.length; ai++) {
                     var dlV = await descargarUnaImagen(items[ai]);
                     if (dlV) { dlOk++; emitProgress(); }
                     await wait(500);
                   }
-                })(simVideoItems);
+                })(simVideoItems));
               } else {
                 ok++;
                 emitProgress();
@@ -1904,14 +2157,14 @@
                 saveGenerated();
                 window.postMessage({ source: 'gf-main', payload: { type: 'images_ready', promptIndex: i + 1, prompt: raw, urls: simUrls } }, '*');
                 emitProgress();
-                (async function(items) {
+                pendingDownloads.push((async function(items) {
                   await wait(2000);
                   for (var ai = 0; ai < items.length; ai++) {
                     var dlS = await descargarUnaImagen(items[ai]);
                     if (dlS) { dlOk++; emitProgress(); }
                     await wait(500);
                   }
-                })(simItems);
+                })(simItems));
               } else {
                 ok++;
                 emitProgress();
@@ -2012,16 +2265,22 @@
               }, '*');
               emitProgress();
               // Always auto-download each new image (small delay so file is ready on server)
-              (async function(items) {
+              pendingDownloads.push((async function(items) {
                 await wait(2000);
                 for (var ai = 0; ai < items.length; ai++) {
                   var dlSuccess = await descargarUnaImagen(items[ai]);
                   if (dlSuccess) { dlOk++; emitProgress(); }
                   await wait(500);
                 }
-              })(newItems);
+              })(newItems));
             } else {
-              ok++;
+              // HTTP 200 but zero media = Flow refused (policy/safety block or empty result).
+              // Record it as a policy block so "Exportar bloqueados por política" is useful,
+              // and count it as failed instead of a silent success.
+              fail++;
+              guardarPolitica(raw);
+              guardarFallido(raw);
+              vlog('  🚫 Sin imagen (posible bloqueo de política)', '#f59e0b');
               emitProgress();
             }
           } catch(e) {
@@ -2039,6 +2298,8 @@
         var isRecaptcha = /reCAPTCHA|recaptcha/i.test(errText);
         var isDailyQuota = /DAILY_QUOTA_REACHED|daily.*quota|GENERATION_LIMIT/i.test(errText);
         var isThrottled = /USER_REQUESTS_THROTTLED|throttle/i.test(errText);
+        // Policy/safety refusal → record for the "Exportar bloqueados por política" button.
+        if (/SAFETY|policy|blocked|PROHIBITED|content.*filter/i.test(errText)) guardarPolitica(raw);
         // Daily quota → no point retrying, hard stop. (Error 253 is transient, handled at page load.)
         if (r.status === 429 && isDailyQuota) {
           vlog('🚫 Límite diario alcanzado. Espera 24h para que se reinicie o cambia a otra cuenta.', '#ef4444');
@@ -2078,11 +2339,24 @@
         }
       }
       if (r.ok) okSinceReload++;
+      // Persist progress so the "Continuar" button and "Ver estado" reflect real pending work
+      // after a stop/reload/crash. Cleared on completion below.
+      try {
+        localStorage.setItem('gemini_estado', JSON.stringify({
+          promptsPendientes: lista.slice(i + 1),
+          settings: settings,
+          timestamp: Date.now()
+        }));
+      } catch (e) {}
       // Proactive refresh: clear stale grecaptcha widget / DOM / TCP sockets every N OK prompts.
       // Triggers full Flow reload + resume via fp_auto_resume mechanism.
       if (okSinceReload >= REFRESH_AFTER_N && i < lista.length - 1) {
         var remainingProactive = lista.slice(i + 1);
         vlog('🔄 Refresco proactivo tras ' + okSinceReload + ' OK consecutivos (limpia grecaptcha + DOM + sockets)...', '#3b82f6');
+        // Finish downloading everything generated so far BEFORE reloading — otherwise the
+        // reload kills the in-flight download of this prompt's media (was losing 15/30/45...).
+        vlog('  ⬇️ Esperando descargas pendientes antes de recargar...', '#6b7280');
+        await waitPendingDownloads();
         try {
           localStorage.setItem('fp_auto_resume', JSON.stringify({
             prompts: remainingProactive,
@@ -2094,7 +2368,7 @@
         ejecutando = false;
         window.postMessage({ source: 'gf-main', payload: { type: 'batch_cancelled' } }, '*');
         try { await trustedDetach(); } catch (e) {}
-        setTimeout(function() { window.location.reload(); }, 1500);
+        setTimeout(function() { window.location.reload(); }, 800);
         return;
       }
       if (i < lista.length - 1) {
@@ -2109,8 +2383,14 @@
     // Reset retry counter after successful completion
     localStorage.removeItem('fp_resume_retries');
     localStorage.removeItem('fp_auto_resume');
+    localStorage.removeItem('gemini_estado'); // batch finished — nothing pending to continue
     ejecutando = false;
     window.postMessage({ source: 'gf-main', payload: { type: 'complete' } }, '*');
+    // Finish any in-flight image downloads before the end-of-batch reload.
+    if (pendingDownloads.length) {
+      vlog('  ⬇️ Esperando descargas pendientes...', '#6b7280');
+      await waitPendingDownloads();
+    }
     // If videos still rendering, wait for polls before reloading (keeps polling alive)
     if (pendingVideoPolls > 0) {
       vlog('⏳ Esperando ' + pendingVideoPolls + ' vídeos en renderizado...', '#6b7280');
@@ -2137,14 +2417,19 @@
 
     if (msg.action === 'updateSettings') { settings = Object.assign(settings, msg.settings || {}); return; }
 
-    if (msg.action === 'start') {
-      settings = Object.assign(settings, msg.settings || {});
-      var lines = msg.prompts || []; if (!lines.length) { vlog('⚠️ Sin prompts', '#f59e0b'); return; }
-      vlog('📂 ' + lines.length + ' prompts cargados', '#3b82f6');
-      prompts = lines; indiceActual = 0;
-      localStorage.setItem('gemini_fallidos','[]'); localStorage.setItem('gemini_politica','[]');
-      // Aplicar configuración y ejecutar
-      (async function() { await aplicarConfiguracion(); await wait(1000); await ejecutarPrompts(lines, false); })();
+    if (msg.action === 'scanCharacters') {
+      (async function() {
+        vlog('🔍 Buscando personajes en Flow...', '#3b82f6');
+        var res = await scanCharactersFromFlow();
+        if (res && res.error) {
+          vlog('⚠️ No pude leer personajes (' + res.error + '). Abre Flow y espera a que cargue.', '#f59e0b');
+          window.postMessage({ source: 'gf-main', payload: { type: 'characters_list', characters: [], error: res.error } }, '*');
+          return;
+        }
+        var list = res || [];
+        vlog('✅ ' + list.length + ' personaje(s) encontrado(s)', '#22c55e');
+        window.postMessage({ source: 'gf-main', payload: { type: 'characters_list', characters: list } }, '*');
+      })();
       return;
     }
 
@@ -2286,11 +2571,17 @@
       vlog('📂 ' + lines.length + ' prompts cargados', '#3b82f6');
       var pid = getProjectIdFromUrl();
       if (!pid) { vlog('⚠️ Abre un proyecto Flow primero (URL debe contener /project/...)', '#f59e0b'); return; }
-      var MODEL_LABEL = { nano_banana_pro: 'Nano Banana Pro', nano_banana_2: 'Nano Banana 2', imagen_4: 'Imagen 4', omni_flash: 'Omni Flash', veo_lite: 'Veo 3.1 Lite', veo_fast: 'Veo 3.1 Fast', veo_quality: 'Veo 3.1 Quality' };
+      var MODEL_LABEL = { nano_banana_pro: 'Nano Banana Pro', nano_banana_2: 'Nano Banana 2', nano_banana_2_lite: 'Nano Banana 2 Lite', omni_flash: 'Omni Flash', veo_lite: 'Veo 3.1 Lite', veo_fast: 'Veo 3.1 Fast', veo_quality: 'Veo 3.1 Quality' };
       var modelLbl = MODEL_LABEL[settings.model] || settings.model;
       vlog('⚙️ ' + modelLbl + ' | ' + settings.aspectRatio + ' | x' + settings.generationCount, '#7c5cfc');
+      if (settings.mode === 'image' && settings.characterId) {
+        vlog('🎭 Personaje: ' + (settings.characterName || settings.characterId), '#a855f7');
+      }
       prompts = lines; indiceActual = 0;
+      // Fresh batch: reset failed + policy-blocked lists + any stale pending state.
       localStorage.setItem('gemini_fallidos','[]');
+      localStorage.setItem('gemini_politica','[]');
+      localStorage.removeItem('gemini_estado');
       // Clear previous batch's generated media so reload+restoreGallery only shows current batch
       generatedMedia = [];
       try { localStorage.removeItem('fp_generated'); } catch (e) {}
@@ -2313,7 +2604,7 @@
   });
 
   // === INIT ===
-  var GF_V = 'v0.11.10';
+  var GF_V = 'v0.12.0';
   var prevV = localStorage.getItem('gf_version');
   if (prevV !== GF_V) {
     localStorage.setItem('gf_version', GF_V);

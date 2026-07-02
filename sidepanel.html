@@ -147,6 +147,20 @@
   .row { margin-bottom: 12px; }
   .row:last-child { margin-bottom: 0; }
   .row-label { font-size: 11px; color: var(--muted-2); margin-bottom: 6px; font-weight: 500; }
+  /* Sub-group divider inside a section */
+  .subgroup-label {
+    font-size: 9px; text-transform: uppercase; letter-spacing: 0.09em;
+    color: var(--muted); font-weight: 700; margin: 18px 0 10px;
+    padding-top: 12px; border-top: 1px solid var(--border);
+  }
+  .subgroup-label:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+  /* "Nuevo" pill next to a label */
+  .new-pill {
+    display: inline-block; margin-left: 6px; padding: 1px 6px;
+    font-size: 8px; font-weight: 800; letter-spacing: 0.04em;
+    color: #fff; background: var(--accent); border-radius: 999px;
+    text-transform: uppercase; vertical-align: middle;
+  }
 
   /* ========== SEGMENT CONTROL ========== */
   .seg {
@@ -280,6 +294,19 @@
     cursor: pointer; transition: all 0.15s ease;
   }
   .btn-mini:hover { color: var(--text); border-color: var(--accent); }
+
+  /* ========== FOLDER PICKER ========== */
+  .folder-wrap { display: flex; gap: 6px; align-items: center; }
+
+  /* ========== CHARACTER PICKER ========== */
+  .char-wrap { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+  .char-wrap .sel-wrap { width: 100%; }
+  #btnLoadChars { align-self: flex-end; }
+  .char-thumb-preview { width: 100%; display: flex; justify-content: flex-end; }
+  .char-thumb-preview img {
+    width: 44px; height: 44px; object-fit: cover;
+    border-radius: 8px; border: 1px solid var(--border);
+  }
 
   /* ========== PROGRESS CARD ========== */
   .progress-card {
@@ -560,6 +587,8 @@
     <div class="section">
       <div class="section-label" data-i18n="sec_config">Configuración</div>
 
+      <div class="subgroup-label" data-i18n="grp_create">Creación</div>
+
       <div class="row">
         <div class="row-label" data-i18n="lbl_mode">Tipo</div>
         <div class="seg" id="modeSeg">
@@ -594,6 +623,18 @@
         </div>
       </div>
 
+      <div class="row" id="charRow">
+        <div class="row-label"><span data-i18n="lbl_character">Personaje</span><span class="new-pill" data-i18n="pill_new">Nuevo</span></div>
+        <div class="char-wrap">
+          <div class="sel-wrap">
+            <select class="sel" id="charSel"></select>
+            <span class="sel-arrow">▾</span>
+          </div>
+          <button class="btn-mini" id="btnLoadChars" data-i18n="btn_load_chars">🔄 Cargar personajes</button>
+          <div id="charThumb" class="char-thumb-preview"></div>
+        </div>
+      </div>
+
       <div class="row">
         <div class="row-label" data-i18n="lbl_format">Formato</div>
         <div class="seg" id="ratioSeg"></div>
@@ -609,6 +650,8 @@
         </div>
       </div>
 
+      <div class="subgroup-label" data-i18n="grp_run">Ejecución</div>
+
       <div class="row">
         <div class="row-label" data-i18n="lbl_pause">Pausa entre prompts</div>
         <div class="slider-row">
@@ -620,20 +663,22 @@
       <div class="row">
         <div class="row-label" data-i18n="lbl_method">Método de envío</div>
         <div class="seg" id="methodSeg">
-          <button class="on" data-val="api" data-i18n="method_api">Directo (rápido)</button>
-          <button data-val="simulated" data-i18n="method_sim">Simulado (más fiable)</button>
+          <button class="on" data-val="api" data-i18n="method_api">Rápido</button>
+          <button data-val="simulated" data-i18n="method_sim">Más fiable</button>
         </div>
       </div>
       <div id="methodHint" style="font-size:11px; color:#9ca3af; padding:0 4px 8px 4px; line-height:1.4;"></div>
 
-      <div class="toggle-row">
-        <span class="toggle-label" data-i18n="lbl_enable">Extensión activa</span>
-        <label class="switch">
-          <input type="checkbox" id="enabledTgl" checked>
-          <div class="switch-track"></div>
-          <div class="switch-knob"></div>
-        </label>
+      <div class="subgroup-label" data-i18n="grp_output">Salida</div>
+
+      <div class="row">
+        <div class="row-label"><span data-i18n="lbl_folder">Carpeta de descarga</span><span class="new-pill" data-i18n="pill_new">Nuevo</span></div>
+        <div class="folder-wrap">
+          <button class="btn-mini" id="btnPickFolder" data-i18n="btn_pick_folder">📁 Elegir carpeta</button>
+          <button class="btn-mini" id="btnClearFolder" style="display:none" data-i18n="btn_clear_folder">✕</button>
+        </div>
       </div>
+      <div id="folderHint" style="font-size:11px; color:#9ca3af; padding:0 4px 8px 4px; line-height:1.4;"></div>
 
     </div>
 
@@ -704,15 +749,25 @@
 
     <div class="section">
       <div class="section-label" data-i18n="sec_actions">Acciones</div>
+
+      <div class="subgroup-label" data-i18n="grp_run_ctl">Ejecución</div>
       <div class="btn-grid">
         <button class="btn" id="btnContinuar" data-i18n="btn_continue">Continuar</button>
         <button class="btn" id="btnReintentar" data-i18n="btn_retry">Reintentar fallidos</button>
-        <button class="btn" id="btnDescargar" data-i18n="btn_download">Descargar todo</button>
-        <button class="btn" id="btnEstado" data-i18n="btn_status">Ver estado</button>
-        <button class="btn danger" id="btnDetener" data-i18n="btn_stop">Detener</button>
-        <button class="btn" id="btnLimpiar" data-i18n="btn_clear">Limpiar todo</button>
-        <button class="btn btn-full" id="btnPolitica" data-i18n="btn_policy">Exportar bloqueados por política</button>
+        <button class="btn danger btn-full" id="btnDetener" data-i18n="btn_stop">Detener</button>
+      </div>
+
+      <div class="subgroup-label" data-i18n="grp_downloads">Descargas y exportar</div>
+      <div class="btn-grid">
+        <button class="btn btn-full" id="btnDescargar" data-i18n="btn_download">Descargar todo</button>
         <button class="btn btn-full" id="btnExportar" data-i18n="btn_export">Exportar prompts fallidos</button>
+        <button class="btn btn-full" id="btnPolitica" data-i18n="btn_policy">Exportar bloqueados por política</button>
+      </div>
+
+      <div class="subgroup-label" data-i18n="grp_maint">Mantenimiento</div>
+      <div class="btn-grid">
+        <button class="btn" id="btnEstado" data-i18n="btn_status">Ver estado</button>
+        <button class="btn danger" id="btnLimpiar" data-i18n="btn_clear">Limpiar todo</button>
       </div>
     </div>
 
