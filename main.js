@@ -1346,13 +1346,10 @@
       return null;
     },
 
+    // NOTE: scope this to <flow-add-menu>. The toolbar "+" at the top of the page
+    // uses the same 'add' icon, and clicking that one opens the wrong menu.
     addIngredientsButton: function () {
-      var self = this;
-      var btns = document.querySelectorAll('button');
-      for (var i = 0; i < btns.length; i++) {
-        if (self.iconOf(btns[i]) === 'add' && self.visible(btns[i])) return btns[i];
-      }
-      return null;
+      return document.querySelector('flow-add-menu button');
     },
 
     overlay: function () { return document.querySelector('.cdk-overlay-container'); },
@@ -1477,28 +1474,120 @@
       return true;
     },
 
+    // --- character reference (consistency) ---
+    // An attached character shows up in the composer as <flow-character-ingredient-chip>.
+    characterChip: function () { return document.querySelector('flow-character-ingredient-chip'); },
+
+    clearCharacter: async function () {
+      var chip = this.characterChip();
+      if (!chip) return true;
+      var self = this;
+      var btn = Array.prototype.slice.call(chip.querySelectorAll('button'))
+        .find(function (b) { return self.iconOf(b) === 'cancel'; });
+      if (btn) btn.click();
+      return await waitFor(function () { return !self.characterChip(); }, 4000);
+    },
+
+    // Open the ingredients menu → Personajes → click the character by name.
+    // The side-nav entry is found by its icon so this works in any language.
+    setCharacter: async function (name) {
+      var self = this;
+      if (!name) return await this.clearCharacter();
+      if (this.characterChip()) return true;          // already attached
+      var add = this.addIngredientsButton();
+      if (!add) return false;
+      add.click();
+      if (!(await waitFor(function () { return !!document.querySelector('flow-add-menu-side-nav'); }, 8000))) {
+        this.closeOverlay(); return false;
+      }
+      var nav = document.querySelector('flow-add-menu-side-nav');
+      var entry = Array.prototype.slice.call(nav.querySelectorAll('mat-list-item, button, a'))
+        .find(function (e) { return self.iconOf(e) === 'accessibility_new'; });
+      if (!entry) { this.closeOverlay(); return false; }
+      entry.click();
+      var want = String(name).toLowerCase();
+      var item = null;
+      var found = await waitFor(function () {
+        var list = document.querySelector('flow-add-menu-asset-list');
+        if (!list) return false;
+        item = Array.prototype.slice.call(list.querySelectorAll('flow-add-menu-asset-item'))
+          .find(function (e) { return self.txtOf(e).toLowerCase().indexOf(want) > -1; });
+        return !!item;
+      }, 8000);
+      if (!found || !item) { this.closeOverlay(); return false; }
+      item.click();                                    // clicking attaches it directly
+      var ok = await waitFor(function () { return !!self.characterChip(); }, 6000);
+      // Always dismiss the popover: if it lingers it can sit over the send button.
+      this.closeOverlay();
+      await waitFor(function () { return !self.overlayOpen(); }, 3000);
+      return ok;
+    },
+
+    // Read the available characters (for the side panel dropdown).
+    listCharacters: async function () {
+      var self = this;
+      var add = this.addIngredientsButton();
+      if (!add) return { error: 'add_menu_not_found' };
+      add.click();
+      if (!(await waitFor(function () { return !!document.querySelector('flow-add-menu-side-nav'); }, 8000))) {
+        this.closeOverlay(); return { error: 'menu_did_not_open' };
+      }
+      var nav = document.querySelector('flow-add-menu-side-nav');
+      var entry = Array.prototype.slice.call(nav.querySelectorAll('mat-list-item, button, a'))
+        .find(function (e) { return self.iconOf(e) === 'accessibility_new'; });
+      if (!entry) { this.closeOverlay(); return { error: 'characters_section_not_found' }; }
+      entry.click();
+      await waitFor(function () { return !!document.querySelector('flow-add-menu-asset-list'); }, 8000);
+      await wait(800);                                  // let the virtual list settle
+      var list = document.querySelector('flow-add-menu-asset-list');
+      var out = [];
+      if (list) {
+        Array.prototype.slice.call(list.querySelectorAll('flow-add-menu-asset-item')).forEach(function (e) {
+          var nameTxt = self.txtOf(e);
+          if (!nameTxt) return;
+          var img = e.querySelector('img');
+          // The UI has no stable id any more, so the name IS the identifier: that is
+          // what we click to re-attach it later.
+          if (!out.some(function (c) { return c.id === nameTxt; })) {
+            out.push({ id: nameTxt, name: nameTxt, thumb: (img && img.src) || '' });
+          }
+        });
+      }
+      this.closeOverlay();
+      await waitFor(function () { return !self.overlayOpen(); }, 3000);
+      return out;
+    },
+
     // --- results ---
     // Each generated item is a <flow-grid-tile-container> holding an <img class="image">
     // whose src is a signed flow-content.google URL.
     tiles: function () {
       return Array.prototype.slice.call(document.querySelectorAll('flow-grid-tile-container'));
     },
+    // Snapshot BOTH the tile elements and their URLs. Element identity is what makes
+    // this reliable: the grid is virtualised and media URLs are signed, so an existing
+    // tile can get a fresh src and would otherwise look like newly generated media.
     mediaSnapshot: function () {
-      var seen = {};
+      var urls = {};
+      var els = (typeof WeakSet === 'function') ? new WeakSet() : null;
       this.tiles().forEach(function (t) {
+        if (els) els.add(t);
         var img = t.querySelector('img');
         var s = img && (img.src || img.getAttribute('src'));
-        if (s) seen[s] = true;
+        if (s) urls[s] = true;
       });
-      return seen;
+      return { urls: urls, els: els };
     },
     // Collect URLs of media that appeared after the snapshot was taken.
     newMedia: function (snapshot) {
       var found = [];
+      var urls = (snapshot && snapshot.urls) || {};
+      var els = snapshot && snapshot.els;
       this.tiles().forEach(function (t) {
+        if (els && els.has(t)) return;              // tile already existed → not ours
         var img = t.querySelector('img');
         var s = img && (img.src || img.getAttribute('src'));
-        if (!s || snapshot[s]) return;
+        if (!s || urls[s]) return;
         if (!/^https?:/.test(s)) return;
         if (found.indexOf(s) === -1) found.push(s);
       });
@@ -1518,28 +1607,20 @@
     try { return !!condFn(); } catch (e) { return false; }
   }
 
-  // Chrome throttles hidden tabs hard (≈1 timer/minute after ~5 min), which would
-  // stall a batch when the window is minimised. A tab that is playing audio is
-  // exempt, so we keep a silent oscillator running while a batch is active.
-  var _fpAudioCtx = null, _fpAudioNode = null;
-  function keepAwakeStart() {
-    try {
-      if (_fpAudioCtx) return;
-      var Ctx = window.AudioContext || window.webkitAudioContext;
-      if (!Ctx) return;
-      _fpAudioCtx = new Ctx();
-      var osc = _fpAudioCtx.createOscillator();
-      var gain = _fpAudioCtx.createGain();
-      gain.gain.value = 0.0001;             // effectively silent
-      osc.connect(gain); gain.connect(_fpAudioCtx.destination);
-      osc.start();
-      _fpAudioNode = osc;
-    } catch (e) {}
-  }
-  function keepAwakeStop() {
-    try { if (_fpAudioNode) _fpAudioNode.stop(); } catch (e) {}
-    try { if (_fpAudioCtx) _fpAudioCtx.close(); } catch (e) {}
-    _fpAudioNode = null; _fpAudioCtx = null;
+  // Chrome throttling of hidden tabs — MEASURED on this build, don't guess:
+  //   tab visible (even if the window is behind others): timers run normally
+  //   tab hidden (another tab in front, or window minimised):
+  //       ~1s clamp immediately, then ~1 timer PER MINUTE after about a minute.
+  // The usual "play silent audio to stay exempt" trick was tested here and does NOT
+  // work any more (a 0.0001-gain oscillator kept AudioContext 'running' and the tab
+  // was throttled to 58s per 200ms timer anyway). So driving Flow's UI simply cannot
+  // run in a hidden tab — we warn the user instead. Working minimised is what the
+  // direct-API mode (phase 6 of the rebuild plan) is for.
+  var _fpHiddenWarned = false;
+  function warnIfHidden() {
+    if (_fpHiddenWarned || !document.hidden) return;
+    _fpHiddenWarned = true;
+    vlog('⚠️ La pestaña de Flow está en segundo plano: Chrome la ralentiza mucho y el lote puede quedarse casi parado. Déjala a la vista (la ventana puede estar detrás de otras, pero no minimizada ni con otra pestaña delante).', '#f59e0b');
   }
 
   // FlowPilot model id → label shown in Flow's model dropdown
@@ -1582,18 +1663,34 @@
       vlog('  ⚠️ No pude abrir los ajustes de Flow; uso los que ya estén puestos', '#f59e0b');
     }
 
-    // 2. Prompt
+    // 2. Character reference (image and video). Re-checked every prompt: Flow may or
+    //    may not keep the chip attached between generations, and setCharacter is a
+    //    no-op when it is already there.
+    if (settings.characterName || settings.characterId) {
+      var wantChar = settings.characterName || settings.characterId;
+      if (!(await FlowUI.setCharacter(wantChar))) {
+        vlog('  ⚠️ No pude aplicar el personaje "' + wantChar + '" (sigo sin él)', '#f59e0b');
+      }
+    } else {
+      await FlowUI.clearCharacter();
+    }
+
+    // 3. Prompt — make sure no popover is left covering the composer first.
+    if (FlowUI.overlayOpen()) {
+      FlowUI.closeOverlay();
+      await waitFor(function () { return !FlowUI.overlayOpen(); }, 3000);
+    }
     if (!(await FlowUI.setPrompt(promptText))) {
       return { ok: false, status: 0, text: 'no pude escribir el prompt' };
     }
 
-    // 3. Snapshot what is on screen, then submit.
+    // 4. Snapshot what is on screen, then submit.
     var snapshot = FlowUI.mediaSnapshot();
     if (!(await FlowUI.clickSend())) {
       return { ok: false, status: 0, text: 'el botón de generar no se activó' };
     }
 
-    // 4. Wait for the new media to render.
+    // 5. Wait for the new media to render.
     var expected = Math.max(1, parseInt(settings.generationCount, 10) || 1);
     var timeoutMs = isVideo ? 300000 : 90000;
     var urls = [];
@@ -1610,130 +1707,11 @@
   }
 
   // ===== CHARACTERS (reference / consistency) =====
-  // No API — read from Flow's DOM. Character tiles are div[data-tile-id] with an <img>.
-  // characterServerId = data-tile-id minus the "fe_id_" prefix. Name = img alt. Thumb = img src.
-
-  function readCharacterTiles(rootEl) {
-    var scope = rootEl || document;
-    // Characters (and only characters) link to /project/<pid>/character/<id>.
-    // Generated images link to /edit/<id>. Match the character route to filter cleanly.
-    var links = Array.prototype.slice.call(scope.querySelectorAll('a[href*="/character/"]'));
-    var out = [];
-    var seen = {};
-    links.forEach(function(a){
-      var href = a.getAttribute('href') || '';
-      var m = href.match(/\/character\/([a-f0-9-]{36})/i);
-      if (!m) return;
-      var id = m[1];
-      if (seen[id]) return;
-      seen[id] = true;
-      // Name + thumb from the img inside (or around) the link.
-      var img = a.querySelector('img') || (a.closest('[data-tile-id]') && a.closest('[data-tile-id]').querySelector('img'));
-      var name = (img && (img.getAttribute('alt') || img.getAttribute('aria-label'))) || '';
-      out.push({ id: id, name: name.trim() || 'Personaje', thumb: (img && img.src) || '' });
-    });
-    return out;
-  }
-
-  // Vanilla equivalents of the jQuery :has(i:contains(...)) selectors used to drive the UI.
-  function findButtonByIcon(iconText, scope) {
-    var btns = (scope || document).querySelectorAll('button, div[role="button"], [type="button"]');
-    for (var i = 0; i < btns.length; i++) {
-      var ic = btns[i].querySelector('i, span.google-symbols, [class*="google-symbols"], span.material-icons');
-      if (ic && ic.textContent.trim() === iconText && btns[i].offsetParent) return btns[i];
-    }
-    return null;
-  }
-
-  // Find the prompt-box "add reference" button. Multiple add_2 icons exist (toolbar Create,
-  // etc.), so prefer the one that opens a popover/dialog (aria-haspopup / aria-controls radix).
-  function findAddReferenceButton() {
-    var btns = document.querySelectorAll('button, div[role="button"], [type="button"]');
-    var fallback = null;
-    for (var i = 0; i < btns.length; i++) {
-      var b = btns[i];
-      if (!b.offsetParent) continue;
-      var ic = b.querySelector('i, span.google-symbols, [class*="google-symbols"]');
-      if (!ic || ic.textContent.trim() !== 'add_2') continue;
-      var pop = b.getAttribute('aria-haspopup');
-      var ctrl = b.getAttribute('aria-controls') || '';
-      if (pop || /radix-/.test(ctrl)) return b; // the popover trigger next to the prompt box
-      if (!fallback) fallback = b;
-    }
-    return fallback;
-  }
-
-  // Open the "add reference" dialog, switch to character type, scrape the list, close.
-  // Non-disruptive: it's an overlay dialog, the prompt box stays intact.
+  // Flow's Angular build has no ids in the DOM any more: a character is picked from
+  // the ingredients menu by NAME, so the name is the identifier we store and re-click.
+  // All the DOM work lives in FlowUI (listCharacters / setCharacter / clearCharacter).
   async function scanCharactersFromFlow() {
-    // 0. If character tiles are already visible (user on Characters tab), just read them.
-    var direct = readCharacterTiles(document);
-    if (direct.length > 0) return direct;
-
-    // 1. Open the add-media/reference dialog (icon add_2 near the prompt box).
-    var addBtn = findAddReferenceButton();
-    if (!addBtn) return { error: 'add_button_not_found' };
-    addBtn.click();
-    await wait(500);
-
-    // 2. In the dialog, pick the "character" type (icon accessibility_new).
-    var dialog = document.querySelector('div[role="dialog"]');
-    var charTypeBtn = findButtonByIcon('accessibility_new', dialog || document);
-    if (charTypeBtn) { charTypeBtn.click(); await wait(700); }
-
-    // 3. Read character tiles from the dialog's virtuoso list.
-    var chars = [];
-    for (var poll = 0; poll < 12; poll++) {
-      dialog = document.querySelector('div[role="dialog"]');
-      chars = readCharacterTiles(dialog || document);
-      if (chars.length > 0) break;
-      await wait(300);
-    }
-
-    // 4. Close the dialog (Escape).
-    try {
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true }));
-      var closeBtn = dialog && findButtonByIcon('close', dialog);
-      if (closeBtn) closeBtn.click();
-    } catch (e) {}
-    await wait(200);
-
-    return chars;
-  }
-
-  // Build a CHARACTER ingredient object matching Flow's shape (for setState fallback).
-  function buildCharacterIngredient(characterServerId) {
-    return {
-      type: 'CHARACTER',
-      ingredientId: uuid4(),
-      characterServerId: characterServerId,
-      addedTime: new Date(),
-      modifiedTime: new Date(),
-      isLoading: false,
-      preferredIngredientType: 'REFERENCE'
-    };
-  }
-
-  // Ensure the given character is present in the store's ingredients before onSubmit (Pure mode).
-  // Flow does NOT keep the character between prompts, so this runs each iteration.
-  function applyCharacterPure(store, characterId) {
-    if (!store || !characterId) return;
-    try {
-      var st = store.getState();
-      var ings = (st && st.ingredients) || [];
-      var already = ings.some(function(x){ return x && x.type === 'CHARACTER' && x.characterServerId === characterId; });
-      if (already) return;
-      var actions = st && st.actions;
-      if (actions && typeof actions.addCharacterIngredient === 'function') {
-        actions.addCharacterIngredient({ characterServerId: characterId, source: 'REUSE_PROMPT' });
-        // Verify it landed; if not, fall back to setState.
-        var after = store.getState().ingredients || [];
-        if (after.some(function(x){ return x && x.type === 'CHARACTER' && x.characterServerId === characterId; })) return;
-      }
-      // Fallback: write the ingredient directly.
-      var cur = store.getState().ingredients || [];
-      store.setState({ ingredients: cur.concat([buildCharacterIngredient(characterId)]) });
-    } catch (e) {}
+    return await FlowUI.listCharacters();
   }
 
   // Watch DOM for new media URLs appearing after onSubmit fires.
@@ -1847,173 +1825,8 @@
     });
   }
 
-  async function pureSendOne(promptText, settings) {
-    // Retry up to 3 times in case Flow's React tree is still mounting
-    var found = null;
-    for (var attempt = 0; attempt < 3; attempt++) {
-      found = findPromptBoxFiberNode();
-      if (found) break;
-      await wait(800);
-    }
-    if (!found) return { ok: false, status: 0, text: 'fiber_node_not_found' };
-    var store = found.store;
-    var onSubmit = found.onSubmit;
-    var state;
-    try { state = store.getState(); } catch (e) { return { ok: false, status: 0, text: 'store_state_err: ' + e.message }; }
-    var actions = state && state.actions;
-    if (!actions || typeof actions.setPrompt !== 'function') return { ok: false, status: 0, text: 'actions_missing' };
-
-    var isVideo = settings.mode === 'video';
-    // Flow accepts: IMAGE, VIDEO_FRAMES (text-to-video), VIDEO_REFERENCES (with ingredients).
-    // Bare 'VIDEO' is invalid — submit silently bails. A character is a reference ingredient,
-    // so video + character must use VIDEO_REFERENCES (reference-to-video).
-    var desiredMode;
-    if (isVideo) {
-      if (settings.characterId || settings.videoSubMode === 'ingredients') desiredMode = 'VIDEO_REFERENCES';
-      else desiredMode = 'VIDEO_FRAMES';
-    } else {
-      desiredMode = 'IMAGE';
-    }
-    var currentMode = state.mode;
-
-    // 1. setMode FIRST (has cascading side-effects: resets model picker, ratio defaults, etc.)
-    if (currentMode !== desiredMode) {
-      try { actions.setMode(desiredMode); } catch (e) {}
-      await wait(500); // let side-effects settle
-    }
-
-    // 2. Model
-    if (isVideo) {
-      var vid = VIDEO_MODEL_MAP_PURE[settings.model] || settings.model || 'veo_3_1_fast';
-      try { actions.setVideoModelFamily(vid); } catch (e) {}
-      // Omni Flash supports selectable duration (4/6/8/10s). Other models ignore this.
-      if (settings.model === 'omni_flash' && typeof actions.setSelectedVideoDuration === 'function') {
-        var dur = parseInt(settings.videoDuration, 10) || 8;
-        try { actions.setSelectedVideoDuration(dur); } catch (e) {}
-      }
-    } else {
-      var imgFam = IMAGE_MODEL_MAP_PURE[settings.model] || settings.model || 'nano_banana_pro';
-      try { actions.setImageModelFamily(imgFam); } catch (e) {}
-    }
-    await wait(120);
-
-    // 3. Outputs per prompt
-    try { actions.setOutputsPerPrompt(Math.max(1, parseInt(settings.generationCount, 10) || 1)); } catch (e) {}
-    await wait(80);
-
-    // 4. Aspect ratio LAST (simple setter — won't be overwritten by anything below)
-    try { actions.setAspectRatio(ASPECT_MAP_PURE[settings.aspectRatio] || 'LANDSCAPE'); } catch (e) {}
-    await wait(80);
-
-    // 5. Prompt LAST so it survives any cascading clears from mode/model changes
-    try { actions.clearPrompt(); } catch (e) {}
-    await wait(80);
-    try { actions.setPrompt(promptText); } catch (e) { return { ok: false, status: 0, text: 'setPrompt_err: ' + e.message }; }
-    await wait(250);
-
-    // 6. Character reference (consistency). Works for images and video (reference-to-video).
-    // Re-applied every prompt — Flow drops it after each gen.
-    if (settings.characterId) {
-      applyCharacterPure(store, settings.characterId);
-      await wait(150);
-    }
-
-    // Snapshot existing media elements + URLs + UUIDs so the capture observer can
-    // reject anything that already exists — even if a delayed previous prompt updates
-    // its IMG.src late, the IMG element itself is in elSet and gets rejected.
-    var snapshotUrlMap = {};
-    var snapshotElSet = (typeof WeakSet === 'function') ? new WeakSet() : null;
-    var snapshotKeySet = {};
-    try {
-      document.querySelectorAll('img, video, source').forEach(function(el) {
-        if (snapshotElSet) snapshotElSet.add(el);
-        var s = el.src || el.currentSrc || el.getAttribute('src') || '';
-        if (s) {
-          snapshotUrlMap[s] = true;
-          var m = s.match(/[?&]name=([a-f0-9-]{36})/i);
-          if (m) snapshotKeySet[m[1]] = true;
-        }
-      });
-    } catch (e) {}
-
-    // Arm the passive response capture (background.js → 'gf-flow-response' → _fpLastFlowResponse)
-    // so we can tell a real reCAPTCHA/403/quota rejection apart from a slow render.
-    _fpResetFlowResponse();
-
-    // Fire native submit (this calls Flow's own grecaptcha + fetch — same path as manual)
-    try {
-      onSubmit();
-    } catch (e) {
-      return { ok: false, status: 0, text: 'submit_err: ' + e.message };
-    }
-
-    var expectedCount = Math.max(1, parseInt(settings.generationCount, 10) || 1);
-    var timeoutMs = isVideo ? 120000 : 75000;
-    var snap = { urlMap: snapshotUrlMap, elSet: snapshotElSet, keySet: snapshotKeySet };
-    var control = { aborted: false };
-
-    // Race media capture against an error-response watcher. If Flow returns 401/403/429
-    // (or a reCAPTCHA/quota body), bail immediately with that status so replayPrompts'
-    // existing recovery (reload + auto-resume + backoff) runs for pure mode too.
-    function looksBlocked(resp) {
-      if (!resp) return false;
-      if (typeof resp.status === 'number' && resp.status >= 400) return true;
-      var b = String(resp.body || '');
-      return /reCAPTCHA|PERMISSION_DENIED|RESOURCE_EXHAUSTED|quota|throttle/i.test(b);
-    }
-    var errWatch = (async function() {
-      var start = Date.now();
-      while (Date.now() - start < timeoutMs && !control.aborted) {
-        if (looksBlocked(_fpLastFlowResponse)) return _fpLastFlowResponse;
-        await wait(300);
-      }
-      return null;
-    })();
-
-    var capturePromise = captureNewMediaUrls(timeoutMs, expectedCount, isVideo, snap, control)
-      .then(function(u) { return { kind: 'media', urls: u }; });
-    var errorPromise = errWatch.then(function(r) {
-      // Only let the error watcher win the race when it actually saw an error.
-      return r ? { kind: 'error', resp: r } : new Promise(function() {});
-    });
-
-    var winner = await Promise.race([capturePromise, errorPromise]);
-    control.aborted = true; // stop whichever loser is still running
-
-    if (winner.kind === 'error') {
-      var er = winner.resp || {};
-      return { ok: false, status: er.status || 403, text: er.body || 'reCAPTCHA/bloqueo' };
-    }
-
-    var urls = winner.urls || [];
-
-    // Adaptive: if capture came back empty, the media may just be slow. Do ONE bonus pass
-    // (short) before declaring failure — and re-check for a blocking response.
-    if (urls.length === 0) {
-      if (looksBlocked(_fpLastFlowResponse)) {
-        var er2 = _fpLastFlowResponse || {};
-        return { ok: false, status: er2.status || 403, text: er2.body || 'reCAPTCHA/bloqueo' };
-      }
-      await wait(3000);
-      control.aborted = false;
-      urls = await captureNewMediaUrls(15000, expectedCount, isVideo, snap, control);
-      if (urls.length === 0) {
-        if (looksBlocked(_fpLastFlowResponse)) {
-          var er3 = _fpLastFlowResponse || {};
-          return { ok: false, status: er3.status || 403, text: er3.body || 'reCAPTCHA/bloqueo' };
-        }
-        return { ok: false, status: 0, text: 'no_media_captured (timeout — la imagen no apareció a tiempo)' };
-      }
-    }
-
-    // Synth a response-shaped object compatible with extractMediaUrls()
-    var stamp = Date.now();
-    var fakeResp = {
-      workflows: urls.map(function(u, i) { return { metadata: { primaryMediaId: '__pure_' + stamp + '_' + i } }; }),
-      media: urls.map(function(u, i) { return { name: '__pure_' + stamp + '_' + i, image: { generatedImage: { fifeUrl: u } } }; })
-    };
-    return { ok: true, status: 200, text: JSON.stringify(fakeResp) };
-  }
+  // (pureSendOne removed: it drove the old React build via the Zustand store and
+  //  chrome.debugger. Flow is Angular now — see FlowUI / sendOneViaUI above.)
 
   // ===== WARM-UP — build behavioral signal before first prompt =====
   // reCAPTCHA Enterprise scores based on pre-action interaction history.
@@ -2389,16 +2202,14 @@
       return;
     }
     vlog('✅ Flow listo', '#22c55e');
-    // Keep a silent audio track alive so Chrome doesn't throttle this tab to a
-    // crawl while the window is minimised (see docs: ventana minimizada).
-    keepAwakeStart();
+    // Chrome slows hidden tabs to a crawl; tell the user rather than silently stalling.
+    warnIfHidden();
     for (var i = 0; i < lista.length; i++) {
       if (STOP || !settings.enabled) {
         vlog('⛔ Detenido', '#ef4444');
         if (lista !== prompts) { prompts = lista; }
         indiceActual = i;
-        keepAwakeStop();
-        ejecutando = false;
+                ejecutando = false;
         // Clear auto-resume on STOP so reload doesn't restart batch...
         try {
           localStorage.removeItem('fp_auto_resume');
@@ -2416,6 +2227,7 @@
         setTimeout(function() { window.location.reload(); }, 3000);
         return;
       }
+      warnIfHidden();   // also catches the user minimising midway through a batch
       var raw = lista[i].trim();
       indiceActual = i;
       var isVideoMode = settings.mode === 'video';
@@ -2474,8 +2286,7 @@
         if (r.status === 429 && isDailyQuota) {
           vlog('🚫 Límite diario alcanzado. Espera 24h para que se reinicie o cambia a otra cuenta.', '#ef4444');
           localStorage.removeItem('fp_auto_resume');
-          keepAwakeStop();
-          ejecutando = false;
+                    ejecutando = false;
           window.postMessage({ source: 'gf-main', payload: { type: 'batch_cancelled' } }, '*');
           setTimeout(function() { window.location.reload(); }, 3000);
           return;
@@ -2497,8 +2308,7 @@
             localStorage.removeItem('fp_resume_retries');
             vlog('🚫 Bloqueado 3 veces seguidas. Detenido. Cierra Flow + reabre + intenta más tarde.', '#ef4444');
           }
-          keepAwakeStop();
-          ejecutando = false;
+                    ejecutando = false;
           window.postMessage({ source: 'gf-main', payload: { type: 'batch_cancelled' } }, '*');
           setTimeout(function() { window.location.reload(); }, 3000);
           return;
@@ -2537,8 +2347,7 @@
           }));
         } catch (e) {}
         // Do NOT touch fp_resume_retries — this is proactive, not failure
-        keepAwakeStop();
-        ejecutando = false;
+                ejecutando = false;
         window.postMessage({ source: 'gf-main', payload: { type: 'batch_cancelled' } }, '*');
         try { await trustedDetach(); } catch (e) {}
         setTimeout(function() { window.location.reload(); }, 800);
@@ -2557,8 +2366,7 @@
     localStorage.removeItem('fp_resume_retries');
     localStorage.removeItem('fp_auto_resume');
     localStorage.removeItem('gemini_estado'); // batch finished — nothing pending to continue
-    keepAwakeStop();
-    ejecutando = false;
+        ejecutando = false;
     window.postMessage({ source: 'gf-main', payload: { type: 'complete' } }, '*');
     // Finish any in-flight image downloads before the end-of-batch reload.
     if (pendingDownloads.length) {
@@ -2778,7 +2586,7 @@
   });
 
   // === INIT ===
-  var GF_V = 'v0.13.0';
+  var GF_V = 'v0.13.1';
   var prevV = localStorage.getItem('gf_version');
   if (prevV !== GF_V) {
     localStorage.setItem('gf_version', GF_V);

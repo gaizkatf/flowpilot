@@ -59,17 +59,31 @@ Con la pestaña de Flow **oculta en segundo plano**:
 | Botón de enviar activo | ✅ sí |
 | Espera programada de 50 ms | ⚠️ tardó **1005 ms** |
 
-Conclusión: con la ventana **tapada por otras** funciona (solo más lento: Chrome
-impone un mínimo de ~1 s a cada espera). El problema es **minimizar mucho rato**:
-pasados ~5 minutos Chrome aplica frenado intensivo (~1 operación por minuto), que
-haría el lote inviable.
+Medición posterior con la pestaña oculta durante varios minutos:
 
-Mitigaciones a implementar en v1.0:
-1. **Audio silencioso** en la pestaña: exime del frenado intensivo.
-2. **Esperar por condición, no por tiempo**: en vez de "espera 300 ms", esperar a que
-   el elemento cambie de estado. Así el mínimo de 1 s apenas penaliza.
+| Minuto oculta | Espera pedida | Espera real |
+|---|---|---|
+| 0 | 200 ms | 1.003 ms |
+| 1+ | 200 ms | **58.003 ms** |
 
-Esto se validará con un lote real minimizado. Si no aguanta, la fase 2 (API) lo cubre.
+El frenado intensivo entra **al minuto**, no a los cinco.
+
+**El truco del audio silencioso NO funciona.** Se probó un oscilador con ganancia
+0,0001: el `AudioContext` se mantuvo en `running` y aun así la pestaña quedó frenada a
+~1 operación por minuto. Chrome ya no exime a las pestañas con audio inaudible. El
+código de keep-alive se retiró por inútil.
+
+**Conclusión definitiva de la fase 1:** la automatización por interfaz necesita que la
+pestaña de Flow esté **visible**. La ventana puede estar detrás de otras (eso no cuenta
+como oculta), pero **no** minimizada ni con otra pestaña delante. En su lugar la
+extensión avisa en el registro cuando detecta que la pestaña pasa a segundo plano.
+
+Trabajar minimizado es, por tanto, la razón de peso para la **fase 6 (API directa)**:
+al no depender del DOM y tener pocas esperas (largas), el frenado apenas le afecta —
+que es exactamente por qué el antiguo modo "Rápido" sí aguantaba minimizado.
+
+Lo que sí se mantiene de las mitigaciones: **esperar por condición y no por tiempo**,
+que hace el motor más rápido y tolerante en general.
 
 ## API nueva — investigación previa (hecha)
 
@@ -180,6 +194,34 @@ Se borra: código de `chrome.debugger`/CDP, React fiber, store de Zustand, API
   moviéndose semanas. Conviene concentrar los selectores en un único sitio del
   código para poder arreglarlos rápido.
 - Sin API, no hay códigos de error limpios: los fallos habrá que deducirlos de la UI.
+
+## Estado de la reconstrucción (v0.13.0 publicada)
+
+| Pieza | Estado |
+|---|---|
+| Dominio nuevo / conexión del panel | ✅ hecho y verificado |
+| Motor por interfaz (ajustes → prompt → enviar → capturar) | ✅ hecho |
+| Imagen: generar + descargar + galería | ✅ verificado por el usuario (4 prompts) |
+| Vídeo: aplicar los 6 controles (modo/tipo/formato/resolución/duración/cantidad) | ✅ verificado sin generar |
+| Vídeo: generación real | ⏳ pendiente |
+| Personajes: listar / adjuntar / quitar | ✅ verificado en vivo |
+| Personajes: generación real con personaje | ⏳ pendiente |
+| Ventana minimizada | ❌ **imposible por interfaz** (medido). Necesita la fase 6 |
+| Lote largo (recarga cada 15) | ⏳ pendiente |
+| Modo API directa (batchexecute) | 📋 fase 6, no empezado |
+
+Detalles útiles descubiertos al implementar:
+
+- El botón "+" de la barra superior usa el **mismo icono `add`** que el de ingredientes
+  de la caja de prompt. Hay que acotar el selector a `flow-add-menu button` o se abre
+  el menú equivocado (Subir / Nueva colección / Crear personaje / Nueva escena).
+- Un personaje adjunto aparece como `<flow-character-ingredient-chip>`; se quita con el
+  botón de icono `cancel`. En la interfaz nueva **no hay id**: el personaje se elige por
+  nombre, así que el nombre pasa a ser el identificador que guardamos.
+- Tras adjuntar un personaje el popover puede quedarse abierto y tapar el botón de
+  generar: hay que cerrarlo siempre antes de escribir el prompt.
+- La rejilla de resultados está virtualizada y las URLs van firmadas, así que comparar
+  solo URLs no basta para saber qué es nuevo: hay que comparar también los elementos.
 
 ## Alcance
 
