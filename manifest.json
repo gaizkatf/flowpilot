@@ -1,10 +1,15 @@
 {
   "manifest_version": 3,
   "name": "FlowPilot",
-  "version": "0.12.1",
+  "version": "0.13.0",
   "description": "Genera imágenes en lote en Google Flow. Pega tus prompts, configura modelo y formato, y deja que se creen y descarguen automáticamente.",
   "permissions": ["sidePanel", "tabs", "activeTab", "storage", "alarms", "debugger"],
-  "host_permissions": ["*://labs.google/*", "*://aisandbox.google.com/*"],
+  "host_permissions": [
+    "*://flow.google.com/*",
+    "*://flow-content.google/*",
+    "*://labs.google/*",
+    "*://aisandbox.google.com/*"
+  ],
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
@@ -22,13 +27,13 @@
   "background": { "service_worker": "background.js" },
   "content_scripts": [
     {
-      "matches": ["*://labs.google/*", "*://aisandbox.google.com/*"],
+      "matches": ["*://flow.google.com/*", "*://labs.google/*", "*://aisandbox.google.com/*"],
       "js": ["main.js"],
       "run_at": "document_idle",
       "world": "MAIN"
     },
     {
-      "matches": ["*://labs.google/*", "*://aisandbox.google.com/*"],
+      "matches": ["*://flow.google.com/*", "*://labs.google/*", "*://aisandbox.google.com/*"],
       "js": ["bridge.js"],
       "run_at": "document_idle"
     }

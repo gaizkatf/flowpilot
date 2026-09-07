@@ -31,6 +31,7 @@ var i18n = {
     lbl_pause: 'Pausa entre prompts',
     lbl_enable: 'Extensión activa',
     lbl_duration: 'Duración',
+    lbl_resolution: 'Resolución',
     lbl_character: 'Personaje',
     btn_load_chars: '🔄 Cargar personajes',
     char_none: 'Ninguno',
@@ -116,7 +117,7 @@ var i18n = {
     log_complete: 'Ejecución completada',
     log_paste_first: 'Pega prompts antes de crear',
     log_loaded_count: 'prompts cargados',
-    tutorial: '<h3>Cómo usar</h3><div class="item"><p><b>1.</b> Abre Google Flow y entra en un proyecto.</p></div><div class="item"><p><b>2.</b> En la pestaña <b>Crear</b>, configura modelo, formato y nº por prompt.</p></div><div class="item"><p><b>3.</b> Pega tus prompts (uno por línea) o carga un archivo .txt.</p></div><div class="item"><p><b>4.</b> Pulsa <b>Crear imágenes/vídeos</b>. Verás el progreso en tiempo real.</p></div><div class="item"><p><b>5.</b> En <b>Resultados</b> aparecerán las imágenes/vídeos mientras se generan, con auto-descarga.</p></div><h3>Personaje (consistencia)</h3><div class="item"><p><b>1.</b> Crea un personaje dentro de Flow (sección Characters).</p></div><div class="item"><p><b>2.</b> En Configuración pulsa <b>🔄 Cargar personajes</b> y elígelo en el desplegable.</p></div><div class="item"><p><b>3.</b> Todo el lote mantendrá ese personaje. Funciona en imagen y vídeo.</p></div><h3>Carpeta de descarga</h3><div class="item"><p>Por defecto se guarda en <b>Descargas</b>. Pulsa <b>📁 Elegir carpeta</b> para guardar en otra. El navegador pedirá permiso 1 vez al empezar cada lote.</p></div><h3>Método de envío</h3><div class="item"><p><b>Rápido:</b> más veloz (~2s), pero a veces Google lo bloquea.</p></div><div class="item"><p><b>Más fiable:</b> más lento pero supera bloqueos. Úsalo si el rápido falla mucho.</p></div><h3>Ajustes</h3><div class="item"><p><b>Pausa entre prompts:</b> espera entre cada generación. Sube a 30-60s para batches grandes.</p></div><div class="item"><p><b>Detener:</b> en la pestaña Estado, para cualquier ejecución en curso.</p></div>'
+    tutorial: '<h3>Cómo usar</h3><div class="item"><p><b>1.</b> Abre Google Flow y entra en un proyecto.</p></div><div class="item"><p><b>2.</b> En la pestaña <b>Crear</b>, configura modelo, formato y nº por prompt.</p></div><div class="item"><p><b>3.</b> Pega tus prompts (uno por línea) o carga un archivo .txt.</p></div><div class="item"><p><b>4.</b> Pulsa <b>Crear imágenes/vídeos</b>. Verás el progreso en tiempo real.</p></div><div class="item"><p><b>5.</b> En <b>Resultados</b> aparecerán las imágenes/vídeos mientras se generan, con auto-descarga.</p></div><h3>Personaje (consistencia)</h3><div class="item"><p><b>1.</b> Crea un personaje dentro de Flow (sección Characters).</p></div><div class="item"><p><b>2.</b> En Configuración pulsa <b>🔄 Cargar personajes</b> y elígelo en el desplegable.</p></div><div class="item"><p><b>3.</b> Todo el lote mantendrá ese personaje. Funciona en imagen y vídeo.</p></div><h3>Carpeta de descarga</h3><div class="item"><p>Por defecto se guarda en <b>Descargas</b>. Pulsa <b>📁 Elegir carpeta</b> para guardar en otra. El navegador pedirá permiso 1 vez al empezar cada lote.</p></div><h3>Vídeo</h3><div class="item"><p>En modo Vídeo puedes elegir <b>duración</b> (4-10 s) y <b>resolución</b> (360p o 720p). La resolución afecta a los créditos que gasta cada vídeo.</p></div><h3>Ajustes</h3><div class="item"><p><b>Pausa entre prompts:</b> espera entre cada generación. Sube a 30-60s para batches grandes.</p></div><div class="item"><p><b>Detener:</b> en la pestaña Estado, para cualquier ejecución en curso.</p></div>'
   },
   en: {
     status_connected: 'Flow detected',
@@ -143,6 +144,7 @@ var i18n = {
     lbl_pause: 'Pause between prompts',
     lbl_enable: 'Extension active',
     lbl_duration: 'Duration',
+    lbl_resolution: 'Resolution',
     lbl_character: 'Character',
     btn_load_chars: '🔄 Load characters',
     char_none: 'None',
@@ -219,7 +221,7 @@ var i18n = {
     log_complete: 'Run complete',
     log_paste_first: 'Paste prompts before creating',
     log_loaded_count: 'prompts loaded',
-    tutorial: '<h3>How to use</h3><div class="item"><p><b>1.</b> Open Google Flow and enter a project.</p></div><div class="item"><p><b>2.</b> In the <b>Create</b> tab, set model, format and number per prompt.</p></div><div class="item"><p><b>3.</b> Paste your prompts (one per line) or load a .txt file.</p></div><div class="item"><p><b>4.</b> Click <b>Create images/videos</b>. You will see live progress.</p></div><div class="item"><p><b>5.</b> In <b>Results</b> images/videos will appear as they are generated, auto-downloaded.</p></div><h3>Character (consistency)</h3><div class="item"><p><b>1.</b> Create a character inside Flow (Characters section).</p></div><div class="item"><p><b>2.</b> In Settings click <b>🔄 Load characters</b> and pick it from the dropdown.</p></div><div class="item"><p><b>3.</b> The whole batch keeps that character. Works for image and video.</p></div><h3>Download folder</h3><div class="item"><p>Defaults to <b>Downloads</b>. Click <b>📁 Choose folder</b> to save elsewhere. The browser asks for permission once at each batch.</p></div><h3>Send method</h3><div class="item"><p><b>Fast:</b> quicker (~2s), but Google may block it sometimes.</p></div><div class="item"><p><b>Reliable:</b> slower but bypasses blocks. Use it if Fast fails often.</p></div><h3>Settings</h3><div class="item"><p><b>Pause between prompts:</b> wait between generations. Raise to 30-60s for large batches.</p></div><div class="item"><p><b>Stop:</b> in the Status tab, halts any running execution.</p></div>'
+    tutorial: '<h3>How to use</h3><div class="item"><p><b>1.</b> Open Google Flow and enter a project.</p></div><div class="item"><p><b>2.</b> In the <b>Create</b> tab, set model, format and number per prompt.</p></div><div class="item"><p><b>3.</b> Paste your prompts (one per line) or load a .txt file.</p></div><div class="item"><p><b>4.</b> Click <b>Create images/videos</b>. You will see live progress.</p></div><div class="item"><p><b>5.</b> In <b>Results</b> images/videos will appear as they are generated, auto-downloaded.</p></div><h3>Character (consistency)</h3><div class="item"><p><b>1.</b> Create a character inside Flow (Characters section).</p></div><div class="item"><p><b>2.</b> In Settings click <b>🔄 Load characters</b> and pick it from the dropdown.</p></div><div class="item"><p><b>3.</b> The whole batch keeps that character. Works for image and video.</p></div><h3>Download folder</h3><div class="item"><p>Defaults to <b>Downloads</b>. Click <b>📁 Choose folder</b> to save elsewhere. The browser asks for permission once at each batch.</p></div><h3>Video</h3><div class="item"><p>In Video mode you can pick <b>duration</b> (4-10 s) and <b>resolution</b> (360p or 720p). Resolution affects how many credits each video costs.</p></div><h3>Settings</h3><div class="item"><p><b>Pause between prompts:</b> wait between generations. Raise to 30-60s for large batches.</p></div><div class="item"><p><b>Stop:</b> in the Status tab, halts any running execution.</p></div>'
   }
 };
 
@@ -275,6 +277,7 @@ var currentSettings = {
   aspectRatio: '16:9',
   videoSubMode: 'frames',
   videoDuration: 8,
+  videoResolution: '720p',
   enabled: true,
   method: 'api',
   characterId: '',
@@ -325,6 +328,8 @@ var genSeg = document.getElementById('genSeg');
 var delaySl = document.getElementById('delaySl');
 var delayVal = document.getElementById('delayVal');
 var methodSeg = document.getElementById('methodSeg');
+var videoResRow = document.getElementById('videoResRow');
+var videoResSeg = document.getElementById('videoResSeg');
 var videoDurRow = document.getElementById('videoDurRow');
 var videoDurSeg = document.getElementById('videoDurSeg');
 var charRow = document.getElementById('charRow');
@@ -398,6 +403,11 @@ function rebuildRatios() {
 
 function updateVideoSubVisibility() {
   videoSubRow.style.display = currentSettings.mode === 'video' ? '' : 'none';
+}
+
+function updateVideoResVisibility() {
+  if (!videoResRow) return;
+  videoResRow.style.display = currentSettings.mode === 'video' ? '' : 'none';
 }
 
 function updateVideoDurVisibility() {
@@ -602,6 +612,7 @@ function initControls() {
     rebuildModelSelect();
     rebuildRatios();
     updateVideoDurVisibility();
+    updateVideoResVisibility();
     updateCharVisibility();
     saveSettings(); sendSettings();
     applyModeLabels();
@@ -622,6 +633,14 @@ function initControls() {
     saveSettings(); sendSettings();
   });
   updateVideoDurVisibility();
+
+  // Video resolution (360p / 720p) — new control in Flow's Angular build
+  setSegValue(videoResSeg, currentSettings.videoResolution || '720p');
+  setupSeg(videoResSeg, function(val) {
+    currentSettings.videoResolution = val;
+    saveSettings(); sendSettings();
+  });
+  updateVideoResVisibility();
 
   // Character picker
   rebuildCharSelect();
@@ -681,22 +700,14 @@ function initControls() {
   currentSettings.enabled = true;
   if (statusDot) statusDot.classList.toggle('on', connected);
 
-  // Method toggle: 'api' (fast, direct) or 'simulated' (stealth, page-native button).
-  // Default 'api' for users whose accounts pass reCAPTCHA. Switch to 'simulated' if 403 errors persist.
-  var validMethods = ['api', 'simulated'];
-  if (validMethods.indexOf(currentSettings.method) === -1) currentSettings.method = 'api';
-  setSegValue(methodSeg, currentSettings.method);
-  methodSeg.querySelectorAll('button').forEach(function(b) {
-    b.addEventListener('click', function() {
-      var val = b.getAttribute('data-val');
-      setSegValue(methodSeg, val);
-      currentSettings.method = val;
-      saveSettings();
-      updateMethodHint();
-      updateLivePreview();
-    });
-  });
-  updateMethodHint();
+  // Since Flow's Angular rewrite there is a single path (driving Flow's own UI):
+  // the old "Rápido / Más fiable" choice no longer means anything, so the control is
+  // hidden. It will come back when the direct-API mode is rebuilt (see rebuild plan).
+  currentSettings.method = 'ui';
+  var methodRow = methodSeg ? methodSeg.closest('.row') : null;
+  if (methodRow) methodRow.style.display = 'none';
+  var methodHintEl = document.getElementById('methodHint');
+  if (methodHintEl) methodHintEl.style.display = 'none';
   saveSettings();
   updateLivePreview();
 }
@@ -742,7 +753,9 @@ function switchTab(name) {
 
 // ===================== Messaging =====================
 function isFlowUrl(url) {
-  return url && (url.includes('labs.google') || url.includes('aisandbox.google.com'));
+  // flow.google.com is Flow's home since the Angular rewrite; the older hosts stay
+  // listed so an old tab still counts as Flow.
+  return url && (url.includes('flow.google.com') || url.includes('labs.google') || url.includes('aisandbox.google.com'));
 }
 
 async function getActiveFlowTab() {

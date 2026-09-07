@@ -9,7 +9,9 @@ var CHECK_INTERVAL_MIN = 360; // 6h
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
 
 function isFlowUrl(url) {
-  return url && (url.includes('labs.google') || url.includes('aisandbox.google.com'));
+  // flow.google.com is where Flow lives since the Angular rewrite; the older
+  // labs.google / aisandbox hosts stay listed so old tabs keep working.
+  return url && (url.includes('flow.google.com') || url.includes('labs.google') || url.includes('aisandbox.google.com'));
 }
 
 async function updateSidePanelForTab(tabId) {

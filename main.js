@@ -1301,6 +1301,314 @@
     '3:4': 'PORTRAIT'
   };
 
+  // ==========================================================================
+  // FLOW UI DRIVER — Angular build (flow.google.com, rewrite of sept 2026)
+  // ==========================================================================
+  // Google rewrote Flow from React/Next.js to Angular and dropped the REST API,
+  // so the extension now drives Flow's own interface. Plain synthetic events are
+  // enough on this build (verified live): no chrome.debugger, no yellow banner.
+  //
+  // EVERY selector lives in this block, so a future Flow change is a one-file fix.
+  // Controls are matched by Material ICON NAME (arrow_forward, crop_16_9, videocam…)
+  // instead of translated label text, so it works in any account language.
+
+  var FlowUI = {
+    // --- basics ---
+    iconOf: function (el) {
+      if (!el) return '';
+      var i = el.querySelector('mat-icon, .mat-icon, i');
+      return i ? (i.textContent || '').trim() : '';
+    },
+    txtOf: function (el) {
+      return el ? (el.textContent || '').replace(/\s+/g, ' ').trim() : '';
+    },
+    visible: function (el) { return !!(el && el.offsetParent); },
+
+    editor: function () { return document.querySelector('div.ProseMirror'); },
+
+    sendButton: function () {
+      var self = this;
+      var btns = document.querySelectorAll('button');
+      for (var i = 0; i < btns.length; i++) {
+        if (self.iconOf(btns[i]) === 'arrow_forward' && self.visible(btns[i])) return btns[i];
+      }
+      return null;
+    },
+
+    settingsTrigger: function () {
+      // Stable class on the Angular build; fall back to "button showing a crop_ icon".
+      var b = document.querySelector('button.settings-trigger-button');
+      if (b && this.visible(b)) return b;
+      var btns = document.querySelectorAll('button');
+      for (var i = 0; i < btns.length; i++) {
+        if (!btns[i].getAttribute('role') && /crop_/.test(btns[i].textContent || '') && this.visible(btns[i])) return btns[i];
+      }
+      return null;
+    },
+
+    addIngredientsButton: function () {
+      var self = this;
+      var btns = document.querySelectorAll('button');
+      for (var i = 0; i < btns.length; i++) {
+        if (self.iconOf(btns[i]) === 'add' && self.visible(btns[i])) return btns[i];
+      }
+      return null;
+    },
+
+    overlay: function () { return document.querySelector('.cdk-overlay-container'); },
+    overlayOpen: function () { return !!document.querySelector('.cdk-overlay-pane'); },
+    closeOverlay: function () {
+      try { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true })); } catch (e) {}
+    },
+
+    radios: function () {
+      var ov = this.overlay();
+      return ov ? Array.prototype.slice.call(ov.querySelectorAll('[role="radio"]')) : [];
+    },
+    radioByIcon: function (icon) {
+      var self = this;
+      return this.radios().find(function (r) { return self.iconOf(r) === icon; }) || null;
+    },
+    radioByText: function (text) {
+      var self = this;
+      var want = String(text).toLowerCase();
+      return this.radios().find(function (r) { return self.txtOf(r).toLowerCase() === want; }) || null;
+    },
+
+    // --- settings panel ---
+    openSettings: async function () {
+      if (this.radios().length > 0) return true;      // already open
+      var t = this.settingsTrigger();
+      if (!t) return false;
+      t.click();
+      var self = this;
+      return await waitFor(function () { return self.radios().length > 0; }, 6000);
+    },
+
+    // Click a radio and confirm it actually took (aria-checked flips).
+    selectRadio: async function (el) {
+      if (!el) return false;
+      if (el.getAttribute('aria-checked') === 'true') return true;
+      el.click();
+      return await waitFor(function () { return el.getAttribute('aria-checked') === 'true'; }, 4000);
+    },
+
+    setMode: async function (isVideo) {
+      return await this.selectRadio(this.radioByIcon(isVideo ? 'videocam' : 'image'));
+    },
+    setAspect: async function (ratio) {
+      var ICONS = { '16:9': 'crop_16_9', '4:3': 'crop_landscape', '1:1': 'crop_square', '3:4': 'crop_portrait', '9:16': 'crop_9_16' };
+      var el = this.radioByIcon(ICONS[ratio] || 'crop_16_9');
+      return el ? await this.selectRadio(el) : false;   // ratio may not exist in video mode
+    },
+    setCount: async function (n) {
+      return await this.selectRadio(this.radioByText('x' + (parseInt(n, 10) || 1)));
+    },
+    setVideoSubtype: async function (sub) {
+      // Fotogramas = crop_free · Ingredientes = chrome_extension
+      var el = this.radioByIcon(sub === 'ingredients' ? 'chrome_extension' : 'crop_free');
+      return el ? await this.selectRadio(el) : false;
+    },
+    setVideoResolution: async function (res) {
+      var el = this.radioByText(res || '720p');
+      return el ? await this.selectRadio(el) : false;
+    },
+    setVideoDuration: async function (secs) {
+      var el = this.radioByText((parseInt(secs, 10) || 8) + ' s');
+      return el ? await this.selectRadio(el) : false;
+    },
+
+    // Model lives behind its own dropdown inside the settings panel.
+    setModel: async function (label) {
+      if (!label) return false;
+      var self = this;
+      var ov = this.overlay();
+      if (!ov) return false;
+      var trigger = Array.prototype.slice.call(ov.querySelectorAll('button'))
+        .find(function (b) { return /arrow_drop_down/.test(b.textContent || ''); });
+      if (!trigger) return false;
+      if (self.txtOf(trigger).toLowerCase().indexOf(String(label).toLowerCase()) > -1) return true; // already set
+      trigger.click();
+      var want = String(label).toLowerCase();
+      var picked = null;
+      var ok = await waitFor(function () {
+        var panes = document.querySelectorAll('.cdk-overlay-pane');
+        var last = panes[panes.length - 1];
+        if (!last) return false;
+        picked = Array.prototype.slice.call(last.querySelectorAll('button,[role="menuitem"]'))
+          .find(function (b) { return self.txtOf(b).toLowerCase().indexOf(want) > -1; });
+        return !!picked;
+      }, 5000);
+      if (!ok || !picked) { this.closeOverlay(); return false; }
+      picked.click();
+      await waitFor(function () { return self.txtOf(trigger).toLowerCase().indexOf(want) > -1; }, 4000);
+      return true;
+    },
+
+    // --- prompt + submit ---
+    setPrompt: async function (text) {
+      var pm = this.editor();
+      if (!pm) return false;
+      pm.focus();
+      // Clear whatever is there, then insert. execCommand keeps ProseMirror in sync
+      // and (verified) still works while the tab is in the background.
+      try {
+        var sel = document.getSelection();
+        sel.selectAllChildren(pm);
+        document.execCommand('delete');
+      } catch (e) {}
+      var okIns = false;
+      try { okIns = document.execCommand('insertText', false, text); } catch (e) {}
+      if (!okIns) return false;
+      var want = String(text).substring(0, 25);
+      return await waitFor(function () { return (pm.textContent || '').indexOf(want) > -1; }, 4000);
+    },
+
+    clickSend: async function () {
+      var self = this;
+      // The button stays disabled until Flow has registered the prompt.
+      var ok = await waitFor(function () {
+        var b = self.sendButton();
+        return b && !b.disabled;
+      }, 8000);
+      if (!ok) return false;
+      var btn = this.sendButton();
+      btn.click();
+      return true;
+    },
+
+    // --- results ---
+    // Each generated item is a <flow-grid-tile-container> holding an <img class="image">
+    // whose src is a signed flow-content.google URL.
+    tiles: function () {
+      return Array.prototype.slice.call(document.querySelectorAll('flow-grid-tile-container'));
+    },
+    mediaSnapshot: function () {
+      var seen = {};
+      this.tiles().forEach(function (t) {
+        var img = t.querySelector('img');
+        var s = img && (img.src || img.getAttribute('src'));
+        if (s) seen[s] = true;
+      });
+      return seen;
+    },
+    // Collect URLs of media that appeared after the snapshot was taken.
+    newMedia: function (snapshot) {
+      var found = [];
+      this.tiles().forEach(function (t) {
+        var img = t.querySelector('img');
+        var s = img && (img.src || img.getAttribute('src'));
+        if (!s || snapshot[s]) return;
+        if (!/^https?:/.test(s)) return;
+        if (found.indexOf(s) === -1) found.push(s);
+      });
+      return found;
+    }
+  };
+
+  // Condition-based wait. Cheaper than fixed sleeps AND far more tolerant of Chrome
+  // throttling background tabs (where every timer is clamped to ~1s).
+  async function waitFor(condFn, timeoutMs, intervalMs) {
+    var start = Date.now();
+    var step = intervalMs || 250;
+    while (Date.now() - start < (timeoutMs || 8000)) {
+      try { if (condFn()) return true; } catch (e) {}
+      await wait(step);
+    }
+    try { return !!condFn(); } catch (e) { return false; }
+  }
+
+  // Chrome throttles hidden tabs hard (≈1 timer/minute after ~5 min), which would
+  // stall a batch when the window is minimised. A tab that is playing audio is
+  // exempt, so we keep a silent oscillator running while a batch is active.
+  var _fpAudioCtx = null, _fpAudioNode = null;
+  function keepAwakeStart() {
+    try {
+      if (_fpAudioCtx) return;
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      _fpAudioCtx = new Ctx();
+      var osc = _fpAudioCtx.createOscillator();
+      var gain = _fpAudioCtx.createGain();
+      gain.gain.value = 0.0001;             // effectively silent
+      osc.connect(gain); gain.connect(_fpAudioCtx.destination);
+      osc.start();
+      _fpAudioNode = osc;
+    } catch (e) {}
+  }
+  function keepAwakeStop() {
+    try { if (_fpAudioNode) _fpAudioNode.stop(); } catch (e) {}
+    try { if (_fpAudioCtx) _fpAudioCtx.close(); } catch (e) {}
+    _fpAudioNode = null; _fpAudioCtx = null;
+  }
+
+  // FlowPilot model id → label shown in Flow's model dropdown
+  var MODEL_LABEL_UI = {
+    nano_banana_pro: 'Nano Banana Pro',
+    nano_banana_2: 'Nano Banana 2',
+    nano_banana_2_lite: 'Nano Banana 2 Lite',
+    omni_flash: 'Omni',
+    veo_lite: 'Lite',
+    veo_fast: 'Fast',
+    veo_quality: 'Quality'
+  };
+
+  // Drive one prompt end-to-end through Flow's interface.
+  // Returns { ok, urls, status, text } shaped like the old API helpers so the
+  // batch loop and gallery code keep working unchanged.
+  async function sendOneViaUI(promptText, settings) {
+    var isVideo = settings.mode === 'video';
+
+    if (!FlowUI.editor()) {
+      return { ok: false, status: 0, text: 'Flow no está listo (no encuentro la caja de prompt)' };
+    }
+
+    // 1. Settings panel — apply everything, verifying each control took effect.
+    if (await FlowUI.openSettings()) {
+      await FlowUI.setMode(isVideo);
+      await wait(300);                                  // mode swap re-renders the panel
+      await FlowUI.setModel(MODEL_LABEL_UI[settings.model] || settings.model);
+      if (isVideo) {
+        await FlowUI.setVideoSubtype(settings.videoSubMode);
+        // Only touch resolution if the user picked one — otherwise leave Flow's default.
+        if (settings.videoResolution) await FlowUI.setVideoResolution(settings.videoResolution);
+        await FlowUI.setVideoDuration(settings.videoDuration);
+      }
+      await FlowUI.setAspect(settings.aspectRatio);
+      await FlowUI.setCount(settings.generationCount);
+      FlowUI.closeOverlay();
+      await waitFor(function () { return !FlowUI.overlayOpen(); }, 3000);
+    } else {
+      vlog('  ⚠️ No pude abrir los ajustes de Flow; uso los que ya estén puestos', '#f59e0b');
+    }
+
+    // 2. Prompt
+    if (!(await FlowUI.setPrompt(promptText))) {
+      return { ok: false, status: 0, text: 'no pude escribir el prompt' };
+    }
+
+    // 3. Snapshot what is on screen, then submit.
+    var snapshot = FlowUI.mediaSnapshot();
+    if (!(await FlowUI.clickSend())) {
+      return { ok: false, status: 0, text: 'el botón de generar no se activó' };
+    }
+
+    // 4. Wait for the new media to render.
+    var expected = Math.max(1, parseInt(settings.generationCount, 10) || 1);
+    var timeoutMs = isVideo ? 300000 : 90000;
+    var urls = [];
+    await waitFor(function () {
+      urls = FlowUI.newMedia(snapshot);
+      return urls.length >= expected;
+    }, timeoutMs, 1000);
+
+    if (!urls.length) urls = FlowUI.newMedia(snapshot);
+    if (!urls.length) {
+      return { ok: false, status: 0, text: 'no apareció ninguna imagen (¿bloqueo, cuota o demasiado lento?)' };
+    }
+    return { ok: true, status: 200, urls: urls.slice(0, expected), isVideo: isVideo };
+  }
+
   // ===== CHARACTERS (reference / consistency) =====
   // No API — read from Flow's DOM. Character tiles are div[data-tile-id] with an <img>.
   // characterServerId = data-tile-id minus the "fe_id_" prefix. Name = img alt. Thumb = img src.
@@ -2069,31 +2377,27 @@
       try { await Promise.allSettled(pendingDownloads.slice()); } catch (e) {}
       pendingDownloads = [];
     }
-    // Pre-batch check for "Más fiable": wait until Flow's React tree exposes the
-    // promptBoxStore. Page may take 20-30s on slow connections. Abort batch with a
-    // clear message if it never appears — do NOT fall back to "Rápido" (user prefs).
-    if (settings.method === 'simulated') {
-      var pureCheck = null;
-      for (var pca = 0; pca < 30; pca++) {
-        pureCheck = findPromptBoxFiberNode();
-        if (pureCheck) break;
-        if (pca === 5) vlog('⏳ Esperando a que Flow termine de cargar (modo Más fiable)...', '#3b82f6');
-        await wait(1000);
-      }
-      if (!pureCheck) {
-        vlog('🚫 No se pudo enganchar al editor de Flow tras 30s. Recarga la pestaña de Flow y vuelve a intentarlo.', '#ef4444');
-        ejecutando = false;
-        window.postMessage({ source: 'gf-main', payload: { type: 'batch_cancelled' } }, '*');
-        return;
-      }
-      vlog('✅ Modo "Más fiable" listo', '#22c55e');
+    // Pre-batch check: wait until Flow's interface is actually usable. On a slow
+    // connection the Angular app can take 20-30s to render the prompt box.
+    var uiReady = await waitFor(function () {
+      return !!FlowUI.editor() && !!FlowUI.sendButton();
+    }, 30000, 1000);
+    if (!uiReady) {
+      vlog('🚫 Flow no terminó de cargar en 30s. Recarga la pestaña de Flow y vuelve a intentarlo.', '#ef4444');
+      ejecutando = false;
+      window.postMessage({ source: 'gf-main', payload: { type: 'batch_cancelled' } }, '*');
+      return;
     }
-    // No warm-up needed in pure mode — no DOM events dispatched, so no fingerprint to mask.
+    vlog('✅ Flow listo', '#22c55e');
+    // Keep a silent audio track alive so Chrome doesn't throttle this tab to a
+    // crawl while the window is minimised (see docs: ventana minimizada).
+    keepAwakeStart();
     for (var i = 0; i < lista.length; i++) {
       if (STOP || !settings.enabled) {
         vlog('⛔ Detenido', '#ef4444');
         if (lista !== prompts) { prompts = lista; }
         indiceActual = i;
+        keepAwakeStop();
         ejecutando = false;
         // Clear auto-resume on STOP so reload doesn't restart batch...
         try {
@@ -2119,187 +2423,41 @@
       var humanModel = MODEL_LABEL[settings.model] || settings.model;
       vlog('  → ' + humanModel + ' · ' + settings.aspectRatio + ' · ×' + (settings.generationCount || 1) + (isVideoMode ? ' · vídeo' : ''), '#6b7280');
 
-      var r;
-      var useSimulated = settings.method === 'simulated';
+      // ===== ONE PATH: drive Flow's own interface (Angular build) =====
+      // The old React-store and REST-API paths are gone with Google's rewrite.
+      var r = await sendOneViaUI(raw, settings);
 
-      // ===== SIMULATED branch (Pure React store + native onSubmit, NO CDP, NO banner) =====
-      if (useSimulated) {
-        r = await pureSendOne(raw, settings);
-        if (r.ok) {
-          try {
-            var simJson = JSON.parse(r.text || '{}');
-            if (isVideoMode) {
-              // Video PURE — MutationObserver already captured URLs after Flow rendered them.
-              // The captured URL is the final playable video — skip pollVideoStatus (no real mediaId).
-              var simVideoUrls = extractMediaUrls(simJson);
-              if (simVideoUrls.length > 0) {
-                ok += simVideoUrls.length;
-                var simVideoItems = [];
-                for (var svi = 0; svi < simVideoUrls.length; svi++) {
-                  var svIt = { url: simVideoUrls[svi], prompt: raw, idx: i + 1, suffix: simVideoUrls.length > 1 ? String.fromCharCode(97 + svi) : '', isVideo: true };
-                  generatedMedia.push(svIt);
-                  simVideoItems.push(svIt);
-                }
-                saveGenerated();
-                window.postMessage({ source: 'gf-main', payload: { type: 'images_ready', promptIndex: i + 1, prompt: raw, urls: simVideoUrls, isVideo: true, isReady: true } }, '*');
-                emitProgress();
-                pendingDownloads.push((async function(items) {
-                  await wait(2000);
-                  for (var ai = 0; ai < items.length; ai++) {
-                    var dlV = await descargarUnaImagen(items[ai]);
-                    if (dlV) { dlOk++; emitProgress(); }
-                    await wait(500);
-                  }
-                })(simVideoItems));
-              } else {
-                ok++;
-                emitProgress();
-              }
-            } else {
-              // Image simulated → extract URLs same as API mode
-              var simUrls = extractMediaUrls(simJson);
-              if (simUrls.length > 0) {
-                ok += simUrls.length;
-                var simItems = [];
-                for (var sui = 0; sui < simUrls.length; sui++) {
-                  var simIt = { url: simUrls[sui], prompt: raw, idx: i + 1, suffix: simUrls.length > 1 ? String.fromCharCode(97 + sui) : '' };
-                  generatedMedia.push(simIt);
-                  simItems.push(simIt);
-                }
-                saveGenerated();
-                window.postMessage({ source: 'gf-main', payload: { type: 'images_ready', promptIndex: i + 1, prompt: raw, urls: simUrls } }, '*');
-                emitProgress();
-                pendingDownloads.push((async function(items) {
-                  await wait(2000);
-                  for (var ai = 0; ai < items.length; ai++) {
-                    var dlS = await descargarUnaImagen(items[ai]);
-                    if (dlS) { dlOk++; emitProgress(); }
-                    await wait(500);
-                  }
-                })(simItems));
-              } else {
-                ok++;
-                emitProgress();
-              }
-            }
-          } catch (e) { ok++; emitProgress(); }
-        }
-      }
-      // ===== VIDEO branch =====
-      else if (isVideoMode) {
-        var videoCount = Math.max(1, parseInt(settings.generationCount, 10) || 1);
-        var videoBatch = [];
-        var allVideosOk = true;
-        var lastErr = null;
-        // Fire N video requests sequentially (one per generation count)
-        for (var vc = 0; vc < videoCount; vc++) {
-          var rv = await replayAutoVideoOne(raw, settings);
-          if (!rv.ok) { allVideosOk = false; lastErr = rv; break; }
-          var rvj = null;
-          try { rvj = JSON.parse(rv.text || '{}'); } catch (e) {}
-          var vMediaId = rvj && rvj.media && rvj.media[0] && rvj.media[0].name;
-          if (!vMediaId) { allVideosOk = false; lastErr = { ok: false, status: 0, text: 'no_mediaId' }; break; }
-          var vUrl = 'https://labs.google/fx/api/trpc/media.getMediaUrlRedirect?name=' + encodeURIComponent(vMediaId);
-          var vItem = {
-            url: vUrl, prompt: raw, idx: i + 1,
-            suffix: videoCount > 1 ? String.fromCharCode(97 + vc) : '',
-            isVideo: true, mediaId: vMediaId,
-            accessToken: rv.accessToken, projectId: rv.projectId
+      if (r.ok) {
+        var urls = r.urls || [];
+        ok += urls.length;
+        var newItems = [];
+        for (var mi = 0; mi < urls.length; mi++) {
+          var item = {
+            url: urls[mi],
+            prompt: raw,
+            idx: i + 1,
+            suffix: urls.length > 1 ? String.fromCharCode(97 + mi) : '',
+            isVideo: !!r.isVideo
           };
-          videoBatch.push(vItem);
-          generatedMedia.push(vItem);
-          ok++;
-          if (vc < videoCount - 1) await wait(800);
+          generatedMedia.push(item);
+          newItems.push(item);
         }
-        if (allVideosOk && videoBatch.length > 0) {
-          saveGenerated();
-          window.postMessage({
-            source: 'gf-main',
-            payload: { type: 'images_ready', promptIndex: i + 1, prompt: raw, urls: videoBatch.map(function(x){return x.url;}), isVideo: true }
-          }, '*');
-          emitProgress();
-          // Start background polling for each video; download when ready
-          (function(items) {
-            items.forEach(function(it) {
-              pendingVideoPolls++;
-              (async function() {
-                try {
-                  var status = await pollVideoStatus(it.mediaId, it.projectId, it.accessToken);
-                  if (!status.ok) {
-                    vlog('  ⏰ Vídeo "' + raw.substring(0,40) + '" no completado: ' + status.status, '#f59e0b');
-                    window.postMessage({ source: 'gf-main', payload: { type: 'media_failed', mediaId: it.mediaId } }, '*');
-                    return;
-                  }
-                  window.postMessage({ source: 'gf-main', payload: { type: 'media_ready', mediaId: it.mediaId, url: it.url, isVideo: true } }, '*');
-                  await wait(1500);
-                  var dlOkVideo = await descargarUnaImagen(it);
-                  if (dlOkVideo) { dlOk++; emitProgress(); }
-                } finally {
-                  pendingVideoPolls--;
-                }
-              })();
-            });
-          })(videoBatch);
-          r = { ok: true, status: 200, text: '' };
-        } else {
-          r = lastErr || { ok: false, status: 0, text: 'video_fail' };
-        }
-      } else {
-        // ===== IMAGE branch (existing flow) =====
-        r = await replayAutoOne(raw, settings);
-        if (r.ok) {
-          // Extract image URLs from response and send to sidepanel for live preview
-          try {
-            var rj = JSON.parse(r.text || '{}');
-            var mediaUrls = extractMediaUrls(rj);
-            if (mediaUrls.length > 0) {
-              ok += mediaUrls.length;
-              var newItems = [];
-              for (var mi = 0; mi < mediaUrls.length; mi++) {
-                var item = {
-                  url: mediaUrls[mi],
-                  prompt: raw,
-                  idx: i + 1,
-                  suffix: mediaUrls.length > 1 ? String.fromCharCode(97 + mi) : ''
-                };
-                generatedMedia.push(item);
-                newItems.push(item);
-              }
-              saveGenerated();
-              window.postMessage({
-                source: 'gf-main',
-                payload: {
-                  type: 'images_ready',
-                  promptIndex: i + 1,
-                  prompt: raw,
-                  urls: mediaUrls
-                }
-              }, '*');
-              emitProgress();
-              // Always auto-download each new image (small delay so file is ready on server)
-              pendingDownloads.push((async function(items) {
-                await wait(2000);
-                for (var ai = 0; ai < items.length; ai++) {
-                  var dlSuccess = await descargarUnaImagen(items[ai]);
-                  if (dlSuccess) { dlOk++; emitProgress(); }
-                  await wait(500);
-                }
-              })(newItems));
-            } else {
-              // HTTP 200 but zero media = Flow refused (policy/safety block or empty result).
-              // Record it as a policy block so "Exportar bloqueados por política" is useful,
-              // and count it as failed instead of a silent success.
-              fail++;
-              guardarPolitica(raw);
-              guardarFallido(raw);
-              vlog('  🚫 Sin imagen (posible bloqueo de política)', '#f59e0b');
-              emitProgress();
-            }
-          } catch(e) {
-            ok++;
-            emitProgress();
+        saveGenerated();
+        window.postMessage({
+          source: 'gf-main',
+          payload: { type: 'images_ready', promptIndex: i + 1, prompt: raw, urls: urls, isVideo: !!r.isVideo, isReady: true }
+        }, '*');
+        emitProgress();
+        // Media URLs are signed and expire, so download promptly. Tracked in
+        // pendingDownloads so a proactive reload never cuts a download short.
+        pendingDownloads.push((async function (items) {
+          await wait(1500);
+          for (var ai = 0; ai < items.length; ai++) {
+            var dl = await descargarUnaImagen(items[ai]);
+            if (dl) { dlOk++; emitProgress(); }
+            await wait(400);
           }
-        }
+        })(newItems));
       }
       if (!r.ok) {
         fail++;
@@ -2316,6 +2474,7 @@
         if (r.status === 429 && isDailyQuota) {
           vlog('🚫 Límite diario alcanzado. Espera 24h para que se reinicie o cambia a otra cuenta.', '#ef4444');
           localStorage.removeItem('fp_auto_resume');
+          keepAwakeStop();
           ejecutando = false;
           window.postMessage({ source: 'gf-main', payload: { type: 'batch_cancelled' } }, '*');
           setTimeout(function() { window.location.reload(); }, 3000);
@@ -2338,6 +2497,7 @@
             localStorage.removeItem('fp_resume_retries');
             vlog('🚫 Bloqueado 3 veces seguidas. Detenido. Cierra Flow + reabre + intenta más tarde.', '#ef4444');
           }
+          keepAwakeStop();
           ejecutando = false;
           window.postMessage({ source: 'gf-main', payload: { type: 'batch_cancelled' } }, '*');
           setTimeout(function() { window.location.reload(); }, 3000);
@@ -2377,6 +2537,7 @@
           }));
         } catch (e) {}
         // Do NOT touch fp_resume_retries — this is proactive, not failure
+        keepAwakeStop();
         ejecutando = false;
         window.postMessage({ source: 'gf-main', payload: { type: 'batch_cancelled' } }, '*');
         try { await trustedDetach(); } catch (e) {}
@@ -2396,6 +2557,7 @@
     localStorage.removeItem('fp_resume_retries');
     localStorage.removeItem('fp_auto_resume');
     localStorage.removeItem('gemini_estado'); // batch finished — nothing pending to continue
+    keepAwakeStop();
     ejecutando = false;
     window.postMessage({ source: 'gf-main', payload: { type: 'complete' } }, '*');
     // Finish any in-flight image downloads before the end-of-batch reload.
@@ -2616,7 +2778,7 @@
   });
 
   // === INIT ===
-  var GF_V = 'v0.12.1';
+  var GF_V = 'v0.13.0';
   var prevV = localStorage.getItem('gf_version');
   if (prevV !== GF_V) {
     localStorage.setItem('gf_version', GF_V);
