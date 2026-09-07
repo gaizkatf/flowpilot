@@ -195,17 +195,19 @@ Se borra: código de `chrome.debugger`/CDP, React fiber, store de Zustand, API
   código para poder arreglarlos rápido.
 - Sin API, no hay códigos de error limpios: los fallos habrá que deducirlos de la UI.
 
-## Estado de la reconstrucción (v0.13.0 publicada)
+## Estado de la reconstrucción (v0.13.2)
 
 | Pieza | Estado |
 |---|---|
 | Dominio nuevo / conexión del panel | ✅ hecho y verificado |
 | Motor por interfaz (ajustes → prompt → enviar → capturar) | ✅ hecho |
 | Imagen: generar + descargar + galería | ✅ verificado por el usuario (4 prompts) |
-| Vídeo: aplicar los 6 controles (modo/tipo/formato/resolución/duración/cantidad) | ✅ verificado sin generar |
-| Vídeo: generación real | ⏳ pendiente |
+| Vídeo: aplicar los 6 controles (modo/tipo/formato/resolución/duración/cantidad) | ✅ verificado |
+| Vídeo: generación real | ✅ verificado en vivo (cola larga, hasta 15 min) |
+| Vídeo: descarga del `.mp4` real | ✅ verificado en vivo (blob interceptado, 1,8 MB, `video/mp4`) |
 | Personajes: listar / adjuntar / quitar | ✅ verificado en vivo |
-| Personajes: generación real con personaje | ⏳ pendiente |
+| Personajes: generación real con personaje | ✅ verificado en vivo |
+| Resolución 360p de vídeo | ⚠️ el botón existe y se pulsa, pero Flow no lo marca (`aria-checked` no cambia) |
 | Ventana minimizada | ❌ **imposible por interfaz** (medido). Necesita la fase 6 |
 | Lote largo (recarga cada 15) | ⏳ pendiente |
 | Modo API directa (batchexecute) | 📋 fase 6, no empezado |
@@ -222,6 +224,17 @@ Detalles útiles descubiertos al implementar:
   generar: hay que cerrarlo siempre antes de escribir el prompt.
 - La rejilla de resultados está virtualizada y las URLs van firmadas, así que comparar
   solo URLs no basta para saber qué es nuevo: hay que comparar también los elementos.
+- **Los vídeos no exponen su fichero en el DOM**: el recuadro solo tiene el póster
+  (`flow-content.google/image/<uuid>`). El `.mp4` vive en `.../video/<uuid>` con una
+  firma distinta, así que cambiar `/image/` por `/video/` en la URL del póster falla
+  (`TypeError: Failed to fetch`). La vía que funciona es el propio menú de Flow:
+  `more_vert` → `Descargar` → submenú de calidad. Ahí se elige la resolución mayor que
+  no esté `disabled` (1080p y 4K son de pago) descartando la opción GIF, y se intercepta
+  el `Blob` en `URL.createObjectURL` anulando el `click()` del `<a download>` para que
+  Flow no lo guarde también en la carpeta de descargas del navegador. Así FlowPilot
+  mantiene el nombre del prompt y la carpeta elegida por el usuario.
+- Esa descarga abre menús sobre la página, así que **no puede solaparse** con el envío
+  del siguiente prompt: en modo vídeo la descarga va en línea, no en `pendingDownloads`.
 
 ## Alcance
 

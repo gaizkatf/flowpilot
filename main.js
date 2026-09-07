@@ -782,6 +782,17 @@
     var safe = (item.prompt || defaultName).replace(/[<>:"/\\|?*\n\r]/g, '').replace(/\s+/g, ' ').trim();
     if (safe.length > 180) safe = safe.substring(0, 180);
     var fname = safe + (item.suffix ? ' (' + item.suffix + ')' : '') + ext;
+    // Videos: item.url is only the poster image. Ask Flow for the real .mp4 through its
+    // own download menu and intercept the Blob (see FlowUI.grabVideoBlob).
+    if (item.isVideo) {
+      var vb = await FlowUI.grabVideoBlob(item.url, true);
+      if (vb) {
+        await saveBlob(vb, fname);
+        return true;
+      }
+      vlog('  ⚠️ No pude interceptar el vídeo; lo guarda Flow en la carpeta de descargas normal', '#f59e0b');
+      return !!(await FlowUI.grabVideoBlob(item.url, false));
+    }
     // fife/redirect URLs can 403 briefly right after generation — retry with backoff so
     // successfully-generated media isn't silently lost.
     var delays = [0, 2500, 5000, 9000];
@@ -811,22 +822,9 @@
     vlog('📥 Descargando ' + generatedMedia.length + ' archivos...', '#3b82f6');
     var ok = 0, fail = 0;
     for (var i = 0; i < generatedMedia.length; i++) {
-      var m = generatedMedia[i];
-      var safe = (m.prompt || ((m.isVideo ? 'video_' : 'image_') + m.idx)).replace(/[<>:"/\\|?*\n\r]/g, '').replace(/\s+/g, ' ').trim();
-      if (safe.length > 180) safe = safe.substring(0, 180);
-      // Use the correct extension per item — videos are .mp4, not .png.
-      var mext = m.isVideo ? '.mp4' : '.png';
-      var fname = safe + (m.suffix ? ' (' + m.suffix + ')' : '') + mext;
-      try {
-        var r = await fetch(m.url);
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        var bl = await r.blob();
-        await saveBlob(bl, fname);
-        ok++;
-      } catch (e) {
-        fail++;
-        vlog('  ❌ ' + fname + ': ' + e.message, '#ef4444');
-      }
+      // Same routine as the automatic download: retries for images, Flow's own
+      // download menu for videos (whose real .mp4 URL isn't in the DOM).
+      if (await descargarUnaImagen(generatedMedia[i])) ok++; else fail++;
       await wait(800);
     }
     vlog('📥 Descarga: ' + ok + ' ok, ' + fail + ' fail', fail > 0 ? '#f59e0b' : '#22c55e');
@@ -1322,6 +1320,12 @@
     txtOf: function (el) {
       return el ? (el.textContent || '').replace(/\s+/g, ' ').trim() : '';
     },
+    // Some buttons render the icon as a ligature in a plain <span> instead of a
+    // <mat-icon>, so fall back to the element's own text (which IS the icon name).
+    hasIcon: function (el, name) {
+      if (!el) return false;
+      return this.iconOf(el) === name || this.txtOf(el).indexOf(name) === 0;
+    },
     visible: function (el) { return !!(el && el.offsetParent); },
 
     editor: function () { return document.querySelector('div.ProseMirror'); },
@@ -1366,10 +1370,15 @@
       var self = this;
       return this.radios().find(function (r) { return self.iconOf(r) === icon; }) || null;
     },
+    // Match on the START of the label, not equality: some options carry a trailing
+    // icon inside the button, e.g. the 360p toggle reads "360pinfo" (label + info icon).
     radioByText: function (text) {
       var self = this;
       var want = String(text).toLowerCase();
-      return this.radios().find(function (r) { return self.txtOf(r).toLowerCase() === want; }) || null;
+      var all = this.radios();
+      var exact = all.find(function (r) { return self.txtOf(r).toLowerCase() === want; });
+      if (exact) return exact;
+      return all.find(function (r) { return self.txtOf(r).toLowerCase().indexOf(want) === 0; }) || null;
     },
 
     // --- settings panel ---
@@ -1401,17 +1410,30 @@
     setCount: async function (n) {
       return await this.selectRadio(this.radioByText('x' + (parseInt(n, 10) || 1)));
     },
+    // Switching to video re-renders the panel and the video-only toggles appear a
+    // moment later, so these wait for the control instead of giving up immediately.
+    waitRadioByIcon: async function (icon, ms) {
+      var self = this, el = null;
+      await waitFor(function () { el = self.radioByIcon(icon); return !!el; }, ms || 5000);
+      return el;
+    },
+    waitRadioByText: async function (text, ms) {
+      var self = this, el = null;
+      await waitFor(function () { el = self.radioByText(text); return !!el; }, ms || 5000);
+      return el;
+    },
+
     setVideoSubtype: async function (sub) {
       // Fotogramas = crop_free · Ingredientes = chrome_extension
-      var el = this.radioByIcon(sub === 'ingredients' ? 'chrome_extension' : 'crop_free');
+      var el = await this.waitRadioByIcon(sub === 'ingredients' ? 'chrome_extension' : 'crop_free');
       return el ? await this.selectRadio(el) : false;
     },
     setVideoResolution: async function (res) {
-      var el = this.radioByText(res || '720p');
+      var el = await this.waitRadioByText(res || '720p');
       return el ? await this.selectRadio(el) : false;
     },
     setVideoDuration: async function (secs) {
-      var el = this.radioByText((parseInt(secs, 10) || 8) + ' s');
+      var el = await this.waitRadioByText((parseInt(secs, 10) || 8) + ' s');
       return el ? await this.selectRadio(el) : false;
     },
 
@@ -1592,6 +1614,104 @@
         if (found.indexOf(s) === -1) found.push(s);
       });
       return found;
+    },
+
+    // --- video files ---
+    // A finished video tile only exposes its POSTER (flow-content.google/image/<uuid>).
+    // The real .mp4 lives behind a signed /video/<uuid> URL that Flow mints on demand:
+    // the signature is per-path, so swapping /image/ for /video/ does NOT work. What
+    // does work is driving Flow's own "Descargar" menu and intercepting the Blob it
+    // builds — that keeps FlowPilot in charge of the filename and the target folder.
+    tileForUrl: function (url) {
+      var uuid = '';
+      try { uuid = new URL(url).pathname.split('/').pop() || ''; } catch (e) {}
+      if (!uuid) return null;
+      return this.tiles().find(function (t) {
+        var img = t.querySelector('img');
+        var s = (img && (img.src || img.getAttribute('src'))) || '';
+        return s.indexOf(uuid) > -1;
+      }) || null;
+    },
+
+    // Quality submenu: "270p GIF animado", "720p Tamaño original", plus 1080p/4K that
+    // are `disabled` unless you pay. Pick the biggest enabled non-GIF option, reading
+    // the resolution digits from the label so this works in any language.
+    videoQualityItem: function (pane) {
+      var self = this;
+      var best = null, bestRes = -1;
+      Array.prototype.slice.call(pane.querySelectorAll('[role="menuitem"]')).forEach(function (it) {
+        if (it.disabled || it.getAttribute('aria-disabled') === 'true') return;
+        var t = self.txtOf(it);
+        if (/gif/i.test(t)) return;
+        var m = t.match(/(\d+)\s*p/i);
+        var res = m ? parseInt(m[1], 10) : (/\b4k\b/i.test(t) ? 2160 : 0);
+        if (res > bestRes) { bestRes = res; best = it; }
+      });
+      return best;
+    },
+
+    // Returns the video Blob, or null. With suppress=false we let Flow save the file
+    // itself — a fallback so the user still gets the video, just in Chrome's default
+    // download folder instead of the one they chose in FlowPilot.
+    grabVideoBlob: async function (posterUrl, suppress) {
+      var self = this;
+      var tile = this.tileForUrl(posterUrl);
+      if (!tile) return null;
+      var mv = Array.prototype.slice.call(tile.querySelectorAll('button'))
+        .find(function (b) { return self.hasIcon(b, 'more_vert'); });
+      if (!mv) return null;
+
+      var captured = null;
+      var origCOU = URL.createObjectURL;
+      var origAClick = HTMLAnchorElement.prototype.click;
+      URL.createObjectURL = function (b) {
+        try { if (b && /video|gif/i.test(b.type || '')) captured = b; } catch (e) {}
+        return origCOU.apply(this, arguments);
+      };
+      if (suppress !== false) {
+        HTMLAnchorElement.prototype.click = function () {
+          var dl = this.getAttribute('download') || '';
+          if (captured && /\.(mp4|webm|gif)$/i.test(dl)) return;   // we save it ourselves
+          return origAClick.apply(this, arguments);
+        };
+      }
+      function restore() {
+        URL.createObjectURL = origCOU;
+        HTMLAnchorElement.prototype.click = origAClick;
+      }
+
+      try {
+        mv.click();
+        var menu = null;
+        var opened = await waitFor(function () {
+          menu = document.querySelector('.cdk-overlay-pane');
+          return !!(menu && menu.querySelector('[role="menuitem"]'));
+        }, 6000);
+        var dlItem = opened && menu
+          ? Array.prototype.slice.call(menu.querySelectorAll('[role="menuitem"]'))
+              .find(function (b) { return self.hasIcon(b, 'download'); })
+          : null;
+        if (dlItem) {
+          dlItem.click();                                  // opens the quality submenu
+          var sub = null;
+          await waitFor(function () {
+            var panes = document.querySelectorAll('.cdk-overlay-pane');
+            sub = panes.length > 1 ? panes[panes.length - 1] : null;
+            return !!(sub && sub.querySelector('[role="menuitem"]'));
+          }, 6000);
+          var quality = sub ? this.videoQualityItem(sub) : null;
+          if (quality) {
+            quality.click();
+            // Flow now fetches the signed .mp4 and wraps it in a Blob. Long videos
+            // take a while, hence the generous budget.
+            await waitFor(function () { return !!captured; }, 120000, 500);
+          }
+        }
+      } catch (e) {}
+      restore();
+      this.closeOverlay();
+      await waitFor(function () { return !self.overlayOpen(); }, 3000);
+      return captured;
     }
   };
 
@@ -1690,12 +1810,19 @@
       return { ok: false, status: 0, text: 'el botón de generar no se activó' };
     }
 
-    // 5. Wait for the new media to render.
+    // 5. Wait for the new media to render. Video is queued server-side and can sit in
+    //    "En cola" for a long while, so it gets a much bigger budget than images —
+    //    timing out here would mark a generation that DOES land as failed.
     var expected = Math.max(1, parseInt(settings.generationCount, 10) || 1);
-    var timeoutMs = isVideo ? 300000 : 90000;
+    var timeoutMs = isVideo ? 900000 : 90000;   // 15 min video · 90 s image
     var urls = [];
+    var notified = false;
     await waitFor(function () {
       urls = FlowUI.newMedia(snapshot);
+      if (!notified && isVideo && urls.length === 0) {
+        notified = true;
+        vlog('  ⏳ Vídeo en cola en Flow; esto puede tardar varios minutos...', '#6b7280');
+      }
       return urls.length >= expected;
     }, timeoutMs, 1000);
 
@@ -2260,16 +2387,27 @@
           payload: { type: 'images_ready', promptIndex: i + 1, prompt: raw, urls: urls, isVideo: !!r.isVideo, isReady: true }
         }, '*');
         emitProgress();
-        // Media URLs are signed and expire, so download promptly. Tracked in
-        // pendingDownloads so a proactive reload never cuts a download short.
-        pendingDownloads.push((async function (items) {
-          await wait(1500);
-          for (var ai = 0; ai < items.length; ai++) {
-            var dl = await descargarUnaImagen(items[ai]);
-            if (dl) { dlOk++; emitProgress(); }
+        // Media URLs are signed and expire, so download promptly.
+        if (r.isVideo) {
+          // Videos are downloaded through Flow's own menu, which opens overlays on the
+          // page — it CANNOT run while the next prompt is being typed, so do it inline.
+          await wait(800);
+          for (var vi = 0; vi < newItems.length; vi++) {
+            if (await descargarUnaImagen(newItems[vi])) { dlOk++; emitProgress(); }
             await wait(400);
           }
-        })(newItems));
+        } else {
+          // Images are a plain fetch, so they can run alongside the next prompt.
+          // Tracked in pendingDownloads so a proactive reload never cuts one short.
+          pendingDownloads.push((async function (items) {
+            await wait(1500);
+            for (var ai = 0; ai < items.length; ai++) {
+              var dl = await descargarUnaImagen(items[ai]);
+              if (dl) { dlOk++; emitProgress(); }
+              await wait(400);
+            }
+          })(newItems));
+        }
       }
       if (!r.ok) {
         fail++;
@@ -2586,7 +2724,7 @@
   });
 
   // === INIT ===
-  var GF_V = 'v0.13.1';
+  var GF_V = 'v0.13.2';
   var prevV = localStorage.getItem('gf_version');
   if (prevV !== GF_V) {
     localStorage.setItem('gf_version', GF_V);
