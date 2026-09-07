@@ -85,34 +85,153 @@ que es exactamente por qué el antiguo modo "Rápido" sí aguantaba minimizado.
 Lo que sí se mantiene de las mitigaciones: **esperar por condición y no por tiempo**,
 que hace el motor más rápido y tolerante en general.
 
-## API nueva — investigación previa (hecha)
+## API nueva — mapeo completo (hecho, 2026-09-07)
 
-Capturada una generación real. El formato es reconstruible:
+### Cómo se midió sin gastar cuota
+
+Las peticiones van por **XMLHttpRequest**, no por `fetch` (esto tumbó el primer intento
+de captura). Envolviendo `XMLHttpRequest.prototype.send` se lee el cuerpo y, si el
+`rpcid` es de generación, se vuelve a llamar a `open()` apuntando a una ruta muerta del
+propio dominio: la petición no llega nunca a Google, Flow enseña *"No se ha podido
+generar… **No se te ha cobrado por esta generación**"* y nosotros nos quedamos con el
+payload. Así se hicieron ~20 pruebas gratis; solo dos generaciones reales (una imagen y
+un vídeo) para leer las respuestas.
+
+Aviso operativo: la pestaña tiene que estar **visible** también para esto. Oculta, cada
+paso tardaba más de 45 s y todo daba timeout.
+
+### Transporte
 
 ```
-POST flow.google.com/_/AiSandboxAngularFrontend/data/batchexecute?rpcids=ogiZ0b&…
-body (form): f.req=[[["ogiZ0b","<json interno>",null,"generic"]]]  &  at=<token XSRF>
-
-json interno = [null,null,null, <seed>, 3, "GEM_PIX_2", null,
-                [null,22,null,null,null,"<projectId>",null,null,null,null,["<token reCAPTCHA>",1]],
-                [[["<prompt>"]]],
-                null,null,null, "<uuid>", "<uuid>"]
+POST flow.google.com/_/AiSandboxAngularFrontend/data/batchexecute?rpcids=<RPC>&…
+cuerpo (form): f.req=[[["<RPC>","<json interno>",null,"generic"]]]  &  at=<token XSRF>
 ```
 
-Piezas ya resueltas:
-- `at` (XSRF) → `WIZ_global_data.SNlM0e` (accesible desde la página)
-- Modelo → **mismos códigos que antes** (`GEM_PIX_2` = Nano Banana Pro)
-- reCAPTCHA → **misma site key** que la versión anterior
-- projectId → de la URL; prompt y seed → posiciones conocidas
+- `at` → `WIZ_global_data.SNlM0e` (42 caracteres, accesible desde la página)
+- projectId → de la URL, y también dentro del bloque de contexto
 
-Pendiente de mapear para la fase 2 (cada uno requiere generar y comparar payloads):
-formato, cantidad, personaje, y todo el bloque de vídeo (modo, duración, resolución).
-Estimación: ~15-20 generaciones de prueba.
+### RPCs
 
-Riesgo asumido: son arrays **posicionales sin nombres**. Cualquier campo que Google
-añada o mueva rompe el modo API en silencio y obliga a re-mapear. Por eso la
-automatización de interfaz se mantiene siempre como modo por defecto y red de
-seguridad, y la API queda como modo opcional de velocidad/minimizado.
+| RPC | Qué hace |
+|---|---|
+| `ogiZ0b` | generar imagen |
+| `YhhmEf` | generar vídeo de texto (t2v) |
+| `MZZa6b` | generar vídeo con personaje/ingredientes (r2v) |
+| `jwpduf`, `nzlxg` | consultar el estado de una generación en curso |
+
+**La cantidad (x1–x4) no viaja en el payload**: Flow manda **una petición por imagen**.
+Con x4 salen 4 `ogiZ0b` idénticos salvo semilla y uuids.
+
+### Payload de imagen (`ogiZ0b`)
+
+| Posición | Contenido |
+|---|---|
+| `[1][0][3]` | semilla (entero aleatorio) |
+| `[1][0][4]` | formato: **1:1=1 · 9:16=2 · 16:9=3 · 3:4=4 · 4:3=5** |
+| `[1][0][5]` | modelo: `GEM_PIX_2` Nano Banana Pro · `NARWHAL` Nano Banana 2 · `HARBOR_SEAL` Nano Banana 2 Lite |
+| `[1][0][7]` | contexto: `[null,22,null,null,null,<projectId>,…,[<token reCAPTCHA>,1]]` |
+| `[1][0][8][0][0][0]` | prompt |
+| `[1][0][10][0][0]` | uuid del personaje (ausente si no hay) |
+| `[1][0][12]`, `[1][0][13]`, `[4][0]` | uuids que genera el cliente |
+| `[3]` | copia del bloque de contexto |
+
+Respuesta: `[0][0][6][0][13]` es la **URL firmada de la imagen**
+(`flow-content.google/image/<uuid>?Expires,KeyName,Signature`), `[0][0][6][2]` sus
+dimensiones y `[0][0][6][0][11]` el id del medio.
+
+### Payload de vídeo de texto (`YhhmEf`)
+
+| Posición | Contenido |
+|---|---|
+| `[0][0][0][2][0][0][0]` | prompt |
+| `[0][0][1]` | modelo+duración: `abra_t2v_4s` / `_6s` / `_8s` / `_10s`, con sufijo `_360p` si se pide 360p (720p no lleva sufijo) |
+| `[0][0][2]` | formato: **9:16=1 · 16:9=2** (¡enum distinto al de imagen!) |
+| `[0][0][4][4]`, `[0][0][4][5]` | uuids del cliente |
+| `[1]`, `[2][0]` | contexto y uuid |
+
+### Payload de vídeo con personaje (`MZZa6b`)
+
+Igual que el anterior pero **desplazado una posición**, y con el personaje aparte:
+
+| Posición | Contenido |
+|---|---|
+| `[0][0][0][2][0][0][0]` | prompt |
+| `[0][0][2]` | `abra_r2v_10s` (r2v = referencia a vídeo) |
+| `[0][0][3]` | formato |
+| `[0][0][9][0][0]` | uuid del personaje |
+
+El envío devuelve ids de operación; el vídeo se recoge después consultando con `jwpduf`
+(`[2][0][5][8][0]` es el estado).
+
+### reCAPTCHA
+
+```js
+grecaptcha.enterprise.execute(<siteKey>, { action: 'IMAGE_GENERATION' })
+```
+
+La `siteKey` está en el parámetro `render` del script
+`www.google.com/recaptcha/enterprise.js` que carga la propia página. El token dura poco
+y hay que pedir uno nuevo por generación.
+
+### Lo único sin resolver
+
+**De dónde sale el uuid del personaje.** No está en el DOM ni en el HTML inicial: la
+lista de personajes se pide **una sola vez al cargar la página** y se queda en memoria,
+así que para verla hay que tener el espía puesto *antes* de que cargue.
+
+Ese mismo comportamiento tiene una consecuencia para el usuario, confirmada en uso
+real: **un personaje creado después de cargar la página no existe para la página**. No
+aparece en el menú de ingredientes por mucho que se vuelva a abrir (reabrirlo no lanza
+ninguna petición: está cacheado), y por tanto "Cargar personajes" no lo encuentra. La
+única salida es recargar la pestaña de Flow. Desde v0.13.5 se avisa de esto en el
+registro cada vez que se cargan personajes, bajo el desplegable y en el tutorial.
+
+### Modo turbo: grabar y repetir (implementado en v0.13.4)
+
+Construir el payload a mano campo por campo es frágil (son arrays posicionales sin
+nombres: si Google mueve un campo, el modo API falla en silencio). Sale mucho mejor
+**grabar la primera petición que construye la propia interfaz de Flow** al enviar el
+primer prompt del lote, y reutilizarla como plantilla para el resto cambiando solo:
+
+- el prompt
+- la semilla y los uuids (nuevos por petición)
+- el token reCAPTCHA (nuevo por petición)
+
+Así el personaje, el projectId, el modelo y los enums de formato vienen ya puestos por
+Flow, y no hace falta resolver el uuid del personaje ni mantener las tablas de enums.
+Solo el primer prompt necesita la ventana visible; el resto puede ir minimizado.
+
+El mapeo de arriba sigue valiendo como red de seguridad y para poder cambiar ajustes a
+mitad de lote sin volver a la interfaz.
+
+**Verificado en vivo:**
+
+| Prueba | Resultado |
+|---|---|
+| Grabar la petición desde la interfaz | ✅ plantilla capturada con prompt, `at` (42 car.) y contexto |
+| Repetir con prompt nuevo, ventana **a la vista** | ✅ HTTP 200, URL de imagen devuelta, 7,1 s |
+| Repetir con la ventana **minimizada** | ✅ HTTP 200, URL de imagen devuelta, **6,8 s** (`document.hidden === true`) |
+| Token reCAPTCHA nuevo por petición, minimizado | ✅ 267 ms |
+
+Minimizado va **igual de rápido** que a la vista: es exactamente lo que la
+automatización por interfaz no puede hacer.
+
+Detalles de implementación:
+
+- El espía se instala envolviendo `XMLHttpRequest` al cargar `main.js` y solo lee.
+- Por petición se cambian: prompt, semilla, los tres uuids de cliente y el token
+  reCAPTCHA (de un solo uso). El bloque de contexto aparece **dos veces** en el payload
+  y hay que poner el token en las dos.
+- `_reqid` de la URL sube 100000 en cada envío; repetirlo puede hacer que se descarte
+  la respuesta.
+- Antes de enviar se comprueba que la plantilla tiene la forma esperada; si no, no se
+  manda nada y el prompt va por interfaz.
+- **El refresco proactivo cada 15 se salta en turbo**: recargar tiraría la plantilla y
+  volver a grabarla exige pestaña visible, así que un lote minimizado se atascaría cada
+  15 prompts. Turbo tampoco acumula el estado del DOM que ese refresco venía a limpiar.
+- Si una repetición falla, ese prompt se reintenta por interfaz y se vuelve a grabar.
+- Vídeo sigue por interfaz: su generación va por otra llamada y se encola en el
+  servidor, así que hace falta mapear también el sondeo de estado.
 
 ## Mapa de la interfaz nueva (verificado)
 
@@ -207,10 +326,12 @@ Se borra: código de `chrome.debugger`/CDP, React fiber, store de Zustand, API
 | Vídeo: descarga del `.mp4` real | ✅ verificado en vivo (blob interceptado, 1,8 MB, `video/mp4`) |
 | Personajes: listar / adjuntar / quitar | ✅ verificado en vivo |
 | Personajes: generación real con personaje | ✅ verificado en vivo |
-| Resolución 360p de vídeo | ⚠️ el botón existe y se pulsa, pero Flow no lo marca (`aria-checked` no cambia) |
-| Ventana minimizada | ❌ **imposible por interfaz** (medido). Necesita la fase 6 |
+| Resolución 360p de vídeo | ✅ funciona (ver nota sobre `aria-checked`) |
+| Ventana minimizada, modo normal | ❌ **imposible por interfaz** (medido) |
+| Ventana minimizada, modo turbo | ✅ verificado en vivo (misma velocidad que a la vista) |
 | Lote largo (recarga cada 15) | ⏳ pendiente |
-| Modo API directa (batchexecute) | 📋 fase 6, no empezado |
+| Modo turbo (grabar y repetir, imágenes) | ✅ implementado y verificado |
+| Turbo en vídeo | 📋 pendiente: falta mapear el sondeo de estado |
 
 Detalles útiles descubiertos al implementar:
 
@@ -235,6 +356,25 @@ Detalles útiles descubiertos al implementar:
   mantiene el nombre del prompt y la carpeta elegida por el usuario.
 - Esa descarga abre menús sobre la página, así que **no puede solaparse** con el envío
   del siguiente prompt: en modo vídeo la descarga va en línea, no en `pendingDownloads`.
+- **El personaje en modo vídeo no se adjunta igual que en imagen** (arreglado en
+  v0.13.3). El botón de ingredientes **solo existe con el subtipo Ingredientes**
+  (icono `chrome_extension`); con Fotogramas no está, comprobado. Y a veces el clic en
+  el personaje solo lo selecciona: hay que pulsar además el botón de confirmar
+  ("Añadir a petición"), que es el único botón del popover que no es ni una ficha
+  (`flow-add-menu-asset-item`) ni una entrada del lateral (`flow-add-menu-side-nav`).
+  El chip acaba dentro de `flow-ingredient-bar`.
+- Los avisos emergentes de Flow ("1 elemento movido a la papelera") **también son
+  `.cdk-overlay-pane`**. Preguntar "¿hay algo abierto?" mirando si existe cualquier
+  panel da siempre que sí mientras haya un aviso, y cada espera a que se cierre agota
+  su tiempo entero. Hay que exigir que el panel contenga algo interactivo.
+- Escape **no siempre cierra** el panel de ajustes; hacer clic en la caja de prompt sí,
+  y además deja el cursor donde toca para escribir.
+- El desplegable de modelos de imagen ahora ofrece **solo tres**: Nano Banana Pro,
+  Nano Banana 2 y Nano Banana 2 Lite.
+- Los `mat-button-toggle` tardan **~500 ms** en actualizar su `aria-checked` tras el
+  clic. Leerlo justo después da un falso negativo — así se dio por roto el toggle de
+  360p, que en realidad funciona. `selectRadio()` ya espera hasta 4 s, que es lo
+  correcto; el error estuvo en una comprobación manual, no en el código.
 
 ## Alcance
 

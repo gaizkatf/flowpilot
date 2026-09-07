@@ -36,7 +36,8 @@ var i18n = {
     btn_load_chars: '🔄 Cargar personajes',
     char_none: 'Ninguno',
     char_loading: 'Buscando personajes...',
-    char_none_found: 'No se encontraron personajes',
+    char_none_found: 'No se encontraron personajes. Si acabas de crearlo en Flow, recarga la pestaña de Flow (F5) y vuelve a pulsar.',
+    char_hint: 'Flow lee tus personajes solo al cargar la página. Si creas uno nuevo, recarga la pestaña de Flow (F5) antes de pulsar el botón.',
     char_need_flow: 'Abre Flow y entra en un proyecto para cargar personajes',
     char_fallback_name: 'Personaje',
     folder_save_failed: 'No pude guardar en la carpeta',
@@ -54,11 +55,11 @@ var i18n = {
     folder_current: 'Guardando en: {name} · se pedirá permiso al empezar cada lote',
     folder_denied: 'Permiso de carpeta denegado. Se usará Descargas.',
     folder_unsupported: 'Tu navegador no permite elegir carpeta. Se usará Descargas.',
-    lbl_method: 'Método de envío',
-    method_api: 'Rápido',
-    method_sim: 'Más fiable',
-    method_hint_api: 'Modo rápido. Crea cada imagen o vídeo en unos 2 segundos. A veces Google lo bloquea y hay que esperar un poco.',
-    method_hint_sim: 'Modo más fiable pero más lento (5-10 segundos por prompt). Úsalo si el modo rápido falla mucho.',
+    lbl_method: 'Modo de envío',
+    method_api: 'Normal',
+    method_sim: 'Turbo',
+    method_hint_api: 'Usa la pantalla de Flow, como si lo hicieras tú. Necesita la ventana a la vista todo el rato: si la minimizas, Chrome la frena y el lote se queda casi parado.',
+    method_hint_sim: 'Solo imágenes. El primer prompt se hace por pantalla (ventana a la vista) y a partir de ahí puedes minimizar la ventana. Si algo falla, vuelve solo al modo normal.',
     // Live preview
     preview_head: 'Vas a crear con',
     preview_meta: 'Auto-descarga activa · pausa {n}s entre prompts',
@@ -117,7 +118,7 @@ var i18n = {
     log_complete: 'Ejecución completada',
     log_paste_first: 'Pega prompts antes de crear',
     log_loaded_count: 'prompts cargados',
-    tutorial: '<h3>Cómo usar</h3><div class="item"><p><b>1.</b> Abre Google Flow y entra en un proyecto.</p></div><div class="item"><p><b>2.</b> En la pestaña <b>Crear</b>, configura modelo, formato y nº por prompt.</p></div><div class="item"><p><b>3.</b> Pega tus prompts (uno por línea) o carga un archivo .txt.</p></div><div class="item"><p><b>4.</b> Pulsa <b>Crear imágenes/vídeos</b>. Verás el progreso en tiempo real.</p></div><div class="item"><p><b>5.</b> En <b>Resultados</b> aparecerán las imágenes/vídeos mientras se generan, con auto-descarga.</p></div><h3>Personaje (consistencia)</h3><div class="item"><p><b>1.</b> Crea un personaje dentro de Flow (sección Characters).</p></div><div class="item"><p><b>2.</b> En Configuración pulsa <b>🔄 Cargar personajes</b> y elígelo en el desplegable.</p></div><div class="item"><p><b>3.</b> Todo el lote mantendrá ese personaje. Funciona en imagen y vídeo.</p></div><h3>Carpeta de descarga</h3><div class="item"><p>Por defecto se guarda en <b>Descargas</b>. Pulsa <b>📁 Elegir carpeta</b> para guardar en otra. El navegador pedirá permiso 1 vez al empezar cada lote.</p></div><h3>Vídeo</h3><div class="item"><p>En modo Vídeo puedes elegir <b>duración</b> (4-10 s) y <b>resolución</b> (360p o 720p). La resolución afecta a los créditos que gasta cada vídeo.</p></div><h3>Ajustes</h3><div class="item"><p><b>Pausa entre prompts:</b> espera entre cada generación. Sube a 30-60s para batches grandes.</p></div><div class="item"><p><b>Detener:</b> en la pestaña Estado, para cualquier ejecución en curso.</p></div>'
+    tutorial: '<h3>Cómo usar</h3><div class="item"><p><b>1.</b> Abre Google Flow y entra en un proyecto.</p></div><div class="item"><p><b>2.</b> En la pestaña <b>Crear</b>, configura modelo, formato y nº por prompt.</p></div><div class="item"><p><b>3.</b> Pega tus prompts (uno por línea) o carga un archivo .txt.</p></div><div class="item"><p><b>4.</b> Pulsa <b>Crear imágenes/vídeos</b>. Verás el progreso en tiempo real.</p></div><div class="item"><p><b>5.</b> En <b>Resultados</b> aparecerán las imágenes/vídeos mientras se generan, con auto-descarga.</p></div><h3>Personaje (consistencia)</h3><div class="item"><p><b>1.</b> Crea un personaje dentro de Flow (sección Characters).</p></div><div class="item"><p><b>2.</b> <b>Recarga la pestaña de Flow (F5).</b> Flow solo lee tus personajes al cargar la página: uno recién creado no aparece hasta que recargas.</p></div><div class="item"><p><b>3.</b> En Configuración pulsa <b>🔄 Cargar personajes</b> y elígelo en el desplegable.</p></div><div class="item"><p><b>4.</b> Todo el lote mantendrá ese personaje. Funciona en imagen y vídeo.</p></div><h3>Carpeta de descarga</h3><div class="item"><p>Por defecto se guarda en <b>Descargas</b>. Pulsa <b>📁 Elegir carpeta</b> para guardar en otra. El navegador pedirá permiso 1 vez al empezar cada lote.</p></div><h3>Vídeo</h3><div class="item"><p>En modo Vídeo puedes elegir <b>duración</b> (4-10 s) y <b>resolución</b> (360p o 720p). La resolución afecta a los créditos que gasta cada vídeo.</p></div><h3>Modo Turbo (solo imágenes)</h3><div class="item"><p>En modo <b>Normal</b>, FlowPilot maneja la pantalla de Flow, así que la ventana tiene que estar a la vista: si la minimizas, Chrome frena la pestaña y el lote se queda casi parado.</p></div><div class="item"><p>En modo <b>Turbo</b>, el primer prompt se hace por pantalla (ventana a la vista) y, a partir de ahí, <b>puedes minimizar la ventana</b> y seguir a la misma velocidad. Si algo falla, vuelve solo al modo Normal.</p></div><h3>Ajustes</h3><div class="item"><p><b>Pausa entre prompts:</b> espera entre cada generación. Sube a 30-60s para batches grandes.</p></div><div class="item"><p><b>Detener:</b> en la pestaña Estado, para cualquier ejecución en curso.</p></div>'
   },
   en: {
     status_connected: 'Flow detected',
@@ -149,7 +150,8 @@ var i18n = {
     btn_load_chars: '🔄 Load characters',
     char_none: 'None',
     char_loading: 'Searching characters...',
-    char_none_found: 'No characters found',
+    char_none_found: 'No characters found. If you just created it in Flow, reload the Flow tab (F5) and press again.',
+    char_hint: 'Flow only reads your characters when the page loads. If you create a new one, reload the Flow tab (F5) before pressing the button.',
     char_need_flow: 'Open Flow and enter a project to load characters',
     char_fallback_name: 'Character',
     folder_save_failed: 'Could not save to the folder',
@@ -167,11 +169,11 @@ var i18n = {
     folder_current: 'Saving to: {name} · you’ll be asked for permission at each batch',
     folder_denied: 'Folder permission denied. Using Downloads.',
     folder_unsupported: 'Your browser can’t pick a folder. Using Downloads.',
-    lbl_method: 'Send method',
-    method_api: 'Fast',
-    method_sim: 'Reliable',
-    method_hint_api: 'Fast mode. Creates each image or video in about 2 seconds. Google sometimes blocks it and you’ll need to wait a bit.',
-    method_hint_sim: 'More reliable but slower (5-10 seconds per prompt). Use it if Fast mode fails often.',
+    lbl_method: 'Send mode',
+    method_api: 'Normal',
+    method_sim: 'Turbo',
+    method_hint_api: 'Uses Flow’s own screen, as if you were clicking. The window has to stay visible: minimise it and Chrome slows the tab to a crawl.',
+    method_hint_sim: 'Images only. The first prompt goes through the screen (window visible) and after that you can minimise it. Falls back to normal mode on its own if anything fails.',
     preview_head: 'You will create with',
     preview_meta: 'Auto-download on · {n}s pause between prompts',
     paste_placeholder: 'Paste your prompts here, one per line...',
@@ -221,7 +223,7 @@ var i18n = {
     log_complete: 'Run complete',
     log_paste_first: 'Paste prompts before creating',
     log_loaded_count: 'prompts loaded',
-    tutorial: '<h3>How to use</h3><div class="item"><p><b>1.</b> Open Google Flow and enter a project.</p></div><div class="item"><p><b>2.</b> In the <b>Create</b> tab, set model, format and number per prompt.</p></div><div class="item"><p><b>3.</b> Paste your prompts (one per line) or load a .txt file.</p></div><div class="item"><p><b>4.</b> Click <b>Create images/videos</b>. You will see live progress.</p></div><div class="item"><p><b>5.</b> In <b>Results</b> images/videos will appear as they are generated, auto-downloaded.</p></div><h3>Character (consistency)</h3><div class="item"><p><b>1.</b> Create a character inside Flow (Characters section).</p></div><div class="item"><p><b>2.</b> In Settings click <b>🔄 Load characters</b> and pick it from the dropdown.</p></div><div class="item"><p><b>3.</b> The whole batch keeps that character. Works for image and video.</p></div><h3>Download folder</h3><div class="item"><p>Defaults to <b>Downloads</b>. Click <b>📁 Choose folder</b> to save elsewhere. The browser asks for permission once at each batch.</p></div><h3>Video</h3><div class="item"><p>In Video mode you can pick <b>duration</b> (4-10 s) and <b>resolution</b> (360p or 720p). Resolution affects how many credits each video costs.</p></div><h3>Settings</h3><div class="item"><p><b>Pause between prompts:</b> wait between generations. Raise to 30-60s for large batches.</p></div><div class="item"><p><b>Stop:</b> in the Status tab, halts any running execution.</p></div>'
+    tutorial: '<h3>How to use</h3><div class="item"><p><b>1.</b> Open Google Flow and enter a project.</p></div><div class="item"><p><b>2.</b> In the <b>Create</b> tab, set model, format and number per prompt.</p></div><div class="item"><p><b>3.</b> Paste your prompts (one per line) or load a .txt file.</p></div><div class="item"><p><b>4.</b> Click <b>Create images/videos</b>. You will see live progress.</p></div><div class="item"><p><b>5.</b> In <b>Results</b> images/videos will appear as they are generated, auto-downloaded.</p></div><h3>Character (consistency)</h3><div class="item"><p><b>1.</b> Create a character inside Flow (Characters section).</p></div><div class="item"><p><b>2.</b> <b>Reload the Flow tab (F5).</b> Flow only reads your characters when the page loads, so a brand-new one won’t show up until you reload.</p></div><div class="item"><p><b>3.</b> In Settings click <b>🔄 Load characters</b> and pick it from the dropdown.</p></div><div class="item"><p><b>4.</b> The whole batch keeps that character. Works for image and video.</p></div><h3>Download folder</h3><div class="item"><p>Defaults to <b>Downloads</b>. Click <b>📁 Choose folder</b> to save elsewhere. The browser asks for permission once at each batch.</p></div><h3>Video</h3><div class="item"><p>In Video mode you can pick <b>duration</b> (4-10 s) and <b>resolution</b> (360p or 720p). Resolution affects how many credits each video costs.</p></div><h3>Turbo mode (images only)</h3><div class="item"><p>In <b>Normal</b> mode FlowPilot drives Flow’s own screen, so the window has to stay visible: minimise it and Chrome slows the tab to a crawl.</p></div><div class="item"><p>In <b>Turbo</b> mode the first prompt goes through the screen (window visible) and after that you can <b>minimise the window</b> and keep the same speed. It falls back to Normal on its own if anything fails.</p></div><h3>Settings</h3><div class="item"><p><b>Pause between prompts:</b> wait between generations. Raise to 30-60s for large batches.</p></div><div class="item"><p><b>Stop:</b> in the Status tab, halts any running execution.</p></div>'
   }
 };
 
@@ -247,6 +249,8 @@ function applyLanguage() {
   // Tutorial body
   var tc = document.getElementById('tutorialContent');
   if (tc) tc.innerHTML = t('tutorial');
+  var charHintEl = document.getElementById('charHint');
+  if (charHintEl) charHintEl.textContent = t('char_hint');
   // Lang switch button state
   document.getElementById('btnLangEs').classList.toggle('active', currentLang === 'es');
   document.getElementById('btnLangEn').classList.toggle('active', currentLang === 'en');
@@ -279,7 +283,7 @@ var currentSettings = {
   videoDuration: 8,
   videoResolution: '720p',
   enabled: true,
-  method: 'api',
+  method: 'ui',
   characterId: '',
   characterName: '',
   useCustomFolder: false
@@ -603,6 +607,17 @@ async function writeToFolder(filename, blob) {
   updateFolderHint();
 })();
 
+// Wiring one control must never take the rest down with it: before this, a single
+// missing element threw out of initControls and every listener registered after that
+// point — including "Cargar personajes" — silently never got attached, so the button
+// looked dead with no error anywhere the user could see.
+function safeWire(label, fn) {
+  try { fn(); } catch (e) {
+    try { addLog('⚠️ ' + label + ': ' + ((e && e.message) || e), '#ef4444'); } catch (e2) {}
+    try { console.error('[FlowPilot] wiring failed:', label, e); } catch (e3) {}
+  }
+}
+
 function initControls() {
   setSegValue(modeSeg, currentSettings.mode);
   updateVideoSubVisibility();
@@ -614,10 +629,20 @@ function initControls() {
     updateVideoDurVisibility();
     updateVideoResVisibility();
     updateCharVisibility();
+    updateMethodVisibility();
     saveSettings(); sendSettings();
     applyModeLabels();
     updateLivePreview();
     ensureGalleryEmpty();
+  });
+
+  safeWire('modo de envío', function () {
+    setSegValue(methodSeg, currentSettings.method || 'ui');
+    setupSeg(methodSeg, function(val) {
+      currentSettings.method = val;
+      updateMethodHint();
+      saveSettings(); sendSettings();
+    });
   });
 
   setSegValue(videoSubSeg, currentSettings.videoSubMode || 'frames');
@@ -700,22 +725,28 @@ function initControls() {
   currentSettings.enabled = true;
   if (statusDot) statusDot.classList.toggle('on', connected);
 
-  // Since Flow's Angular rewrite there is a single path (driving Flow's own UI):
-  // the old "Rápido / Más fiable" choice no longer means anything, so the control is
-  // hidden. It will come back when the direct-API mode is rebuilt (see rebuild plan).
-  currentSettings.method = 'ui';
-  var methodRow = methodSeg ? methodSeg.closest('.row') : null;
-  if (methodRow) methodRow.style.display = 'none';
-  var methodHintEl = document.getElementById('methodHint');
-  if (methodHintEl) methodHintEl.style.display = 'none';
+  updateMethodVisibility();
   saveSettings();
   updateLivePreview();
+}
+
+// Turbo only exists for images: video generation goes through a different call that is
+// still queued server-side, so the control is hidden in video mode.
+function updateMethodVisibility() {
+  if (currentSettings.method !== 'turbo') currentSettings.method = 'ui';
+  var show = currentSettings.mode !== 'video';
+  var row = methodSeg ? methodSeg.closest('.row') : null;
+  var hintEl = document.getElementById('methodHint');
+  if (row) row.style.display = show ? '' : 'none';
+  if (hintEl) hintEl.style.display = show ? '' : 'none';
+  if (methodSeg) setSegValue(methodSeg, currentSettings.method);
+  updateMethodHint();
 }
 
 function updateMethodHint() {
   var hintEl = document.getElementById('methodHint');
   if (!hintEl) return;
-  var key = currentSettings.method === 'simulated' ? 'method_hint_sim' : 'method_hint_api';
+  var key = currentSettings.method === 'turbo' ? 'method_hint_sim' : 'method_hint_api';
   hintEl.textContent = t(key);
 }
 
