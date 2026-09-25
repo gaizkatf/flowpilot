@@ -1511,8 +1511,32 @@
       }, 8000);
       if (!ok) return false;
       var btn = this.sendButton();
+      var pm = this.editor();
+      var before = pm ? (pm.textContent || '') : '';
+      // Flow clears the composer the moment a generation is accepted: that is our proof.
+      var submitted = function () {
+        var e = self.editor();
+        return !!e && (e.textContent || '') !== before;
+      };
+      // Since late September 2026 the generate button ignores synthetic clicks
+      // (isTrusted gate — verified: a real click generates, el.click() and a full
+      // synthetic pointer sequence do nothing, Enter does nothing). Every other
+      // control still accepts synthetic events, so only this one goes through
+      // chrome.debugger. That shows Chrome's "debugging this browser" bar while a
+      // batch runs; it is detached at the end of the batch.
+      // Two tries: the very first event after chrome.debugger attaches is dropped
+      // (measured: attempt 1 reports ok but nothing happens, attempt 2 submits).
+      var r = null;
+      for (var attempt = 0; attempt < 2; attempt++) {
+        try { r = await trustedClick(this.sendButton() || btn); } catch (e) { r = { ok: false, error: e.message }; }
+        if (!r || !r.ok) break;
+        if (await waitFor(submitted, 3000)) return true;
+      }
+      if (r && !r.ok) vlog('  ⚠️ Clic real no disponible (' + (r.error || '?') + '); pruebo el normal', '#f59e0b');
+      // Fallback: synthetic click, in case Google lifts the gate again.
+      btn = this.sendButton() || btn;
       btn.click();
-      return true;
+      return await waitFor(submitted, 4000);
     },
 
     // --- character reference (consistency) ---
@@ -1874,178 +1898,6 @@
     }
     return { ok: true, status: 200, urls: urls.slice(0, expected), isVideo: isVideo };
   }
-
-  // ===== TURBO MODE: record one request, replay it =====
-  //
-  // Driving the interface needs the Flow tab VISIBLE (Chrome throttles hidden tabs to
-  // about one operation per minute — measured, see the rebuild plan). Talking to Flow's
-  // own endpoint doesn't: it is a couple of long waits, which throttling barely touches.
-  //
-  // Rather than hand-building that request field by field — it is a positional array
-  // with no names, so any field Google moves would break us silently — we let Flow build
-  // the first one through its interface, record it, and replay it for the rest of the
-  // batch changing only what MUST change per request: the prompt, the seed, the
-  // client-side uuids and the reCAPTCHA token. Model, format, project and character all
-  // ride along in the recorded template exactly as Flow wrote them.
-  var ApiMode = {
-    IMAGE_RPC: 'ogiZ0b',
-    template: null,          // { url, params, inner } captured from Flow's own request
-    installed: false,
-    _siteKey: null,
-
-    // Sniff Flow's XHRs. Installed once, at load, and left in place: it only reads.
-    install: function () {
-      if (this.installed) return;
-      this.installed = true;
-      var self = this;
-      var origOpen = XMLHttpRequest.prototype.open;
-      var origSend = XMLHttpRequest.prototype.send;
-      XMLHttpRequest.prototype.open = function (method, url) {
-        this.__fpUrl = url;
-        return origOpen.apply(this, arguments);
-      };
-      XMLHttpRequest.prototype.send = function (body) {
-        try {
-          if (this.__fpUrl && /batchexecute/.test(this.__fpUrl) && typeof body === 'string' &&
-              body.indexOf('f.req') === 0) {
-            var params = new URLSearchParams(body);
-            var outer = JSON.parse(params.get('f.req'));
-            if (outer && outer[0] && outer[0][0] && outer[0][0][0] === self.IMAGE_RPC) {
-              self.template = {
-                url: String(this.__fpUrl),
-                at: params.get('at') || '',
-                inner: JSON.parse(outer[0][0][1])
-              };
-            }
-          }
-        } catch (e) { /* never let sniffing break Flow */ }
-        return origSend.apply(this, arguments);
-      };
-    },
-
-    ready: function () { return !!(this.template && this.paths(this.template.inner)); },
-
-    // Resolve the positions we need to patch, and return null if the shape is not what
-    // we expect — that is the signal to stay on the interface path instead of firing a
-    // malformed request.
-    paths: function (inner) {
-      try {
-        var gen = inner[1][0];
-        if (!gen || !gen[8] || !gen[8][0] || !gen[8][0][0]) return null;
-        if (typeof gen[8][0][0][0] !== 'string') return null;
-        if (!gen[7] || !gen[7][10]) return null;
-        return true;
-      } catch (e) { return null; }
-    },
-
-    uuid: function () {
-      try { if (crypto && crypto.randomUUID) return crypto.randomUUID(); } catch (e) {}
-      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
-        var r = Math.random() * 16 | 0;
-        return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
-      });
-    },
-
-    siteKey: function () {
-      if (this._siteKey) return this._siteKey;
-      var s = Array.prototype.slice.call(document.querySelectorAll('script[src]'))
-        .map(function (e) { return e.src; })
-        .find(function (u) { return /recaptcha\/(enterprise|api)\.js/.test(u); });
-      if (s) { try { this._siteKey = new URL(s).searchParams.get('render'); } catch (e) {} }
-      return this._siteKey;
-    },
-
-    // Every request needs its own token; they are single-use and short-lived.
-    freshToken: async function () {
-      var key = this.siteKey();
-      if (!key || !window.grecaptcha || !window.grecaptcha.enterprise) return null;
-      try {
-        return await window.grecaptcha.enterprise.execute(key, { action: 'IMAGE_GENERATION' });
-      } catch (e) { return null; }
-    },
-
-    buildBody: async function (promptText) {
-      var inner = JSON.parse(JSON.stringify(this.template.inner));
-      var gen = inner[1][0];
-      gen[8][0][0][0] = promptText;
-      gen[3] = Math.floor(Math.random() * 2147483647);       // seed
-      gen[12] = this.uuid();
-      gen[13] = this.uuid();
-      if (inner[4] && inner[4][0]) inner[4][0] = this.uuid();
-      var token = await this.freshToken();
-      if (!token) return null;
-      gen[7][10][0] = token;
-      if (inner[3] && inner[3][10]) inner[3][10][0] = token;  // the context block is repeated
-      var freq = JSON.stringify([[[this.IMAGE_RPC, JSON.stringify(inner), null, 'generic']]]);
-      return 'f.req=' + encodeURIComponent(freq) + '&at=' + encodeURIComponent(this.template.at) + '&';
-    },
-
-    // batchexecute answers with a )]}' guard, then length-prefixed chunks.
-    parseResponse: function (text) {
-      var out = [];
-      String(text).replace(/^\)\]\}'\n?/, '').split('\n').forEach(function (line) {
-        if (line.trim().indexOf('[[') !== 0) return;
-        try {
-          JSON.parse(line).forEach(function (e) {
-            if (e[0] === 'wrb.fr' && typeof e[2] === 'string') out.push(JSON.parse(e[2]));
-            if (e[0] === 'er') out.push({ __error: e });
-          });
-        } catch (err) {}
-      });
-      return out;
-    },
-
-    nextUrl: function () {
-      // batchexecute wants a rising _reqid; reusing one can get the reply dropped.
-      var u = this.template.url;
-      return u.replace(/([?&]_reqid=)(\d+)/, function (m, p, n) {
-        return p + (parseInt(n, 10) + 100000);
-      });
-    },
-
-    sendOne: async function (promptText) {
-      var body = await this.buildBody(promptText);
-      if (!body) return { ok: false, status: 0, text: 'no pude obtener el token de reCAPTCHA' };
-      var url = this.nextUrl();
-      this.template.url = url;
-      var r = await fetch(url, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
-        body: body
-      });
-      var text = await r.text();
-      if (!r.ok) return { ok: false, status: r.status, text: text.substring(0, 300) };
-      var parsed = this.parseResponse(text);
-      for (var i = 0; i < parsed.length; i++) {
-        var p = parsed[i];
-        if (p && p.__error) return { ok: false, status: 500, text: JSON.stringify(p.__error).substring(0, 300) };
-        try {
-          var media = p[0][0][6][0][13];
-          if (typeof media === 'string' && /^https?:/.test(media)) {
-            return { ok: true, status: 200, urls: [media], isVideo: false };
-          }
-        } catch (e) {}
-      }
-      return { ok: false, status: 0, text: 'respuesta sin imagen (formato inesperado)' };
-    },
-
-    // Flow itself sends one request PER image, so x4 means four requests.
-    send: async function (promptText, settings) {
-      var n = Math.max(1, parseInt(settings.generationCount, 10) || 1);
-      var urls = [];
-      var last = null;
-      for (var i = 0; i < n; i++) {
-        last = await this.sendOne(promptText);
-        if (!last.ok) break;
-        urls = urls.concat(last.urls);
-        if (i < n - 1) await wait(500);
-      }
-      if (!urls.length) return last || { ok: false, status: 0, text: 'sin respuesta' };
-      return { ok: true, status: 200, urls: urls, isVideo: false };
-    }
-  };
-  ApiMode.install();
 
   // ===== CHARACTERS (reference / consistency) =====
   // Flow's Angular build has no ids in the DOM any more: a character is picked from
@@ -2571,27 +2423,15 @@
       var raw = lista[i].trim();
       indiceActual = i;
       var isVideoMode = settings.mode === 'video';
-      // Turbo replays Flow's own request, which survives a minimised window. It needs a
-      // recorded template first, and it is images-only for now (video generation is
-      // queued server-side through a different call that still has to be mapped).
-      var turbo = settings.method === 'turbo' && !isVideoMode;
-      var useApi = turbo && ApiMode.ready();
-      if (!useApi) warnIfHidden();   // also catches the user minimising midway through
+      warnIfHidden();   // also catches the user minimising midway through a batch
       vlog('[' + (i+1) + '/' + lista.length + '] ' + raw.substring(0, 60) + '...', '#6366f1');
       var humanModel = MODEL_LABEL[settings.model] || settings.model;
-      vlog('  → ' + humanModel + ' · ' + settings.aspectRatio + ' · ×' + (settings.generationCount || 1) + (isVideoMode ? ' · vídeo' : '') + (useApi ? ' · turbo' : ''), '#6b7280');
+      vlog('  → ' + humanModel + ' · ' + settings.aspectRatio + ' · ×' + (settings.generationCount || 1) + (isVideoMode ? ' · vídeo' : ''), '#6b7280');
 
-      var r = useApi ? await ApiMode.send(raw, settings) : await sendOneViaUI(raw, settings);
-      // Turbo failing on a replay is usually a stale template (Google changed something,
-      // or the session moved on). Fall back to the interface for this prompt and re-record.
-      if (useApi && !r.ok) {
-        vlog('  ↩️ El modo turbo falló (' + (r.text || '').substring(0, 80) + '). Repito por interfaz.', '#f59e0b');
-        warnIfHidden();
-        r = await sendOneViaUI(raw, settings);
-      }
-      if (turbo && !useApi && r.ok && ApiMode.ready()) {
-        vlog('  ⚡ Petición grabada: a partir de aquí puedes minimizar la ventana', '#22c55e');
-      }
+      // One path: drive Flow's own interface. (A "turbo" record-and-replay mode existed
+      // in v0.13.4-0.13.6; Google now rejects replayed requests as unusual activity, so
+      // it was removed. The request mapping is kept in the rebuild plan doc.)
+      var r = await sendOneViaUI(raw, settings);
 
       if (r.ok) {
         var urls = r.urls || [];
@@ -2697,11 +2537,6 @@
       } catch (e) {}
       // Proactive refresh: clear stale grecaptcha widget / DOM / TCP sockets every N OK prompts.
       // Triggers full Flow reload + resume via fp_auto_resume mechanism.
-      // In turbo the reload would be actively harmful: it throws away the recorded
-      // request AND needs a visible tab to record a new one, so a minimised run would
-      // stall every 15 prompts. Turbo also doesn't accumulate the DOM/grecaptcha state
-      // the refresh exists to clear.
-      if (useApi) okSinceReload = 0;
       if (okSinceReload >= REFRESH_AFTER_N && i < lista.length - 1) {
         var remainingProactive = lista.slice(i + 1);
         vlog('🔄 Refresco proactivo tras ' + okSinceReload + ' OK consecutivos (limpia grecaptcha + DOM + sockets)...', '#3b82f6');
@@ -2961,7 +2796,7 @@
   });
 
   // === INIT ===
-  var GF_V = 'v0.13.5';
+  var GF_V = 'v0.13.6';
   var prevV = localStorage.getItem('gf_version');
   if (prevV !== GF_V) {
     localStorage.setItem('gf_version', GF_V);

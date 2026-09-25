@@ -380,3 +380,25 @@ Detalles útiles descubiertos al implementar:
 
 Reescritura del núcleo de `main.js` (aprox. la mitad). `sidepanel.js` / `sidepanel.html`
 se mantienen casi enteros. Versión objetivo: **v1.0.0** (cambio de arquitectura).
+
+## Cambio de Google — 25 sept 2026 (v0.13.6)
+
+Dos endurecimientos contra la automatización, verificados en vivo:
+
+1. **El botón de generar ignora los clics sintéticos.** `el.click()`, una secuencia
+   completa de pointer/mouse sintética y Enter en el editor no hacen nada; un clic real
+   sí genera (`isTrusted: true`). El resto de controles (ajustes, menú de ingredientes)
+   siguen aceptando eventos sintéticos. Arreglo: solo ese botón se pulsa con
+   `chrome.debugger` (`Input.dispatchMouseEvent`), que ya existía de versiones antiguas.
+   El primer evento tras conectar el depurador se pierde, por eso hay dos intentos; la
+   prueba de envío es que la caja de prompt se vacía. Funciona incluso con la pestaña
+   oculta. Efecto visible: la barra amarilla de "depurando este navegador" durante el
+   lote; se desconecta al terminar o parar.
+2. **La repetición de peticiones (modo turbo) se rechaza** con
+   `PUBLIC_ERROR_UNUSUAL_ACTIVITY` (código 7). Probado: uuids nuevos o los originales,
+   con y sin la cabecera `X-Same-Domain: 1` que Flow ahora envía. La respuesta de Flow
+   por interfaz no ha cambiado. Flow ya no llama a `grecaptcha.enterprise.execute` por la
+   propiedad pública (hay métodos nuevos `challengeAccount` y `eap`), así que lo más
+   probable es que el token deba ir ligado a interacción real. Cada intento rechazado es
+   una petición marcada contra la cuenta, así que turbo **se apaga solo al primer
+   rechazo** y el lote sigue en modo normal.
